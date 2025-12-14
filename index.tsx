@@ -28,9 +28,33 @@ import {
 // --- Configuration ---
 
 // ============================================================================
-// 👇 וודאי שביצעת DEPLOY חדש עם הרשאות "Anyone" (מי שיש לו גישה: כולם) 👇
+// 👇 חשוב: הגדרת חיבור ל-Google Sheets (Backend) 👇
+// כדי שהמערכת תעבוד מול קובץ "Glow Studio - Sheet", יש לפתוח את ה-Sheet,
+// ללכת ל-Extensions > Apps Script, להדביק את הקוד המתאים (ראה בהמשך הקובץ),
+// ולבצע Deploy כ-Web App עם הרשאות "Anyone".
+// את ה-URL שמתקבל יש להדביק כאן:
 const API_URL = "https://script.google.com/macros/s/AKfycbyw3fdH3QXT4ih2lNXASA1n5Fk31XkJpKMczfws79Iej8P5VcLtSr9yz12UTt8buLue/exec"; 
 // ============================================================================
+
+/* 
+  💡 Apps Script Code Template for "Glow Studio - Sheet":
+  
+  function doGet(e) {
+    const action = e.parameter.action;
+    if (action === 'get_slots') return getBookedSlots();
+    if (action === 'get_client_bookings') return getClientBookings(e.parameter.phone);
+    return ContentService.createTextOutput("Glow Studio API Active");
+  }
+
+  function doPost(e) {
+    const data = JSON.parse(e.postData.contents);
+    if (data.action === 'save') return saveBooking(data);
+    if (data.action === 'cancel') return cancelBooking(data);
+    return ContentService.createTextOutput("Action done");
+  }
+
+  // ... (Full implementation requires saving data to rows)
+*/
 
 // Business Rules
 const BUSINESS_HOURS = {
@@ -332,6 +356,7 @@ const generateTimeSlots = (
   endTime.setHours(endHour, 0, 0, 0);
 
   const dateKey = getDateKey(date);
+  // Ensure we check against the string set
   const bookedTimes = new Set(bookedSlotsMap[dateKey] || []);
 
   while (current < endTime) {
@@ -760,6 +785,14 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
   const [bookedSlots, setBookedSlots] = useState<Record<string, string[]>>({});
   const [retryCount, setRetryCount] = useState(0);
 
+  // Poll for updates every 30 seconds to keep slots up to date (Real-time awareness)
+  useEffect(() => {
+    const interval = setInterval(() => {
+        setRetryCount(prev => prev + 1);
+    }, 30000); 
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     // Fetch data from API (or Mock) when component mounts
     let mounted = true;
@@ -798,7 +831,7 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
         <button 
             onClick={() => setRetryCount(c => c + 1)} 
             className="p-2 rounded-full hover:bg-white/50 text-slate-400"
-            title="רענן נתונים"
+            title="רענן נתונים כעת"
         >
             <RefreshCw size={20} className={isLoading ? "animate-spin" : ""} />
         </button>
@@ -809,7 +842,7 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
           <WifiOff size={20} className="flex-shrink-0" />
           <div>
             <p className="font-bold">שגיאת תקשורת עם המערכת</p>
-            <p className="text-xs opacity-80 mt-1">נא לוודא שכתובת ה-Script נכונה ושההרשאות הן 'Anyone'.</p>
+            <p className="text-xs opacity-80 mt-1">לא ניתן למשוך נתונים מקובץ "Glow Studio - Sheet".</p>
           </div>
         </div>
       )}
@@ -864,23 +897,23 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
                              ? 'bg-orange-50 border-orange-500 shadow-md scale-105 z-10'
                              : 'bg-slate-900 text-white border-slate-900 shadow-lg scale-105 z-10'
                         : isBooked
-                            ? 'bg-gray-100/50 border-gray-200 text-gray-400 cursor-pointer hover:bg-gray-200/50' 
+                            ? 'bg-gray-200 border-gray-300 text-gray-400 cursor-pointer hover:bg-gray-300/50' 
                             : 'bg-white text-slate-700 border-white hover:border-pink-300 hover:shadow-md'
                 }`}
                 >
-                <span className={`text-base font-bold ${isBooked ? 'line-through decoration-gray-400 decoration-2 opacity-50' : ''} ${isSelected && isBooked ? 'text-orange-700' : ''}`}>
+                <span className={`text-base font-bold ${isBooked ? 'line-through decoration-gray-400 decoration-2 opacity-60' : ''} ${isSelected && isBooked ? 'text-orange-700' : ''}`}>
                   {slot.time}
                 </span>
                 
                 {isBooked && (
-                    <div className={`absolute -top-2 -left-2 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border border-white shadow-sm ${isSelected ? 'bg-orange-100 text-orange-700' : 'bg-gray-200 text-gray-600'}`}>
+                    <div className={`absolute -top-2 -left-2 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border border-white shadow-sm z-20 ${isSelected ? 'bg-orange-100 text-orange-700' : 'bg-gray-500 text-white'}`}>
                       <Ban size={10} />
                       תפוס
                     </div>
                 )}
                 
                 {isBooked && (
-                   <span className={`text-[10px] font-medium mt-1 no-underline ${isSelected ? 'text-orange-600' : 'text-gray-400'}`}>
+                   <span className={`text-[10px] font-medium mt-1 no-underline ${isSelected ? 'text-orange-600' : 'text-gray-500'}`}>
                        {isSelected ? 'נבחר להמתנה' : 'להמתנה?'}
                    </span>
                 )}
