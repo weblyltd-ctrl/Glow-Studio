@@ -658,7 +658,7 @@ function HeroSection({ onStart }: { onStart: () => void }) {
       <div className="relative group cursor-pointer" onClick={onStart}>
         <div className="absolute inset-0 bg-pink-300 blur-2xl opacity-40 rounded-full w-48 h-48 -z-10 group-hover:opacity-60 transition-opacity duration-700"></div>
         <img 
-          src="https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?auto=format&fit=crop&q=80&w=400&h=400" 
+          src="https://images.unsplash.com/photo-1616394584738-fc6e612e71b9?auto=format&fit=crop&q=80&w=400&h=400" 
           alt="Beauty Care" 
           className="w-48 h-48 object-cover rounded-full border-4 border-white shadow-xl mx-auto transform group-hover:scale-105 transition-transform duration-500"
         />
