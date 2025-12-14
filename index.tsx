@@ -23,7 +23,8 @@ import {
   CalendarDays,
   Ban,
   RefreshCw,
-  Activity
+  Activity,
+  Zap
 } from "lucide-react";
 
 // --- Configuration ---
@@ -154,18 +155,34 @@ const normalizeTime = (t: any): string | null => {
 }
 
 // Aggressive date key cleaner
-const normalizeDateKey = (k: string): string => {
+const normalizeDateKey = (k: any): string => {
     if (!k) return "";
-    // Extract YYYY-MM-DD pattern directly if possible
-    const match = k.match(/(\d{4}-\d{2}-\d{2})/);
-    if (match) return match[1];
     
-    // Fallback: try parsing date
+    let dateStr = String(k);
+    
+    // 1. Try ISO date extraction (YYYY-MM-DD)
+    // We check for T to avoid matching simple numbers incorrectly, but handle 2025-12-14
+    const isoMatch = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+       // If it's a full ISO timestamp like 2025-12-13T22:00:00.000Z, we must be careful with TimeZone.
+       // Creating a Date object is safer than just regexing the string if the time part exists and might shift the day.
+       if (dateStr.includes('T') || dateStr.includes('Z')) {
+           const d = new Date(dateStr);
+           if (!isNaN(d.getTime())) {
+               return getDateKey(d); // Use local browser time conversion
+           }
+       }
+       // If it's simple YYYY-MM-DD string, trust it.
+       return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+    }
+
+    // 2. Try JavaScript Date object parsing
     const d = new Date(k);
     if (!isNaN(d.getTime())) {
         return getDateKey(d);
     }
-    return k.substring(0, 10);
+    
+    return "";
 };
 
 const isWorkingDay = (date: Date) => WORKING_DAYS.includes(date.getDay());
@@ -217,22 +234,16 @@ const api = {
 
   // Fetch booked slots from Google Sheets
   fetchBookedSlots: async (): Promise<{ connected: boolean; slots: Record<string, string[]> }> => {
-    // Demo mode fallback if URL is empty or fetch fails
-    const mockSlots: Record<string, string[]> = {
-       [getDateKey(new Date())]: ["10:00", "12:00", "14:30"],
-       [getDateKey(new Date(Date.now() + 86400000))]: ["09:00", "15:00"],
-    };
+    const mockSlots: Record<string, string[]> = {}; 
 
     if (!API_URL) return { connected: true, slots: mockSlots };
 
     try {
       const urlWithTimestamp = `${API_URL}?t=${new Date().getTime()}&action=get_slots`;
       
-      // We set a timeout to fail fast if the server is down
       const controller = new AbortController();
       const id = setTimeout(() => controller.abort(), 8000);
 
-      // Removed 'Accept' header to prevent CORS preflight issues on Google Apps Script
       const response = await fetch(urlWithTimestamp, {
           method: 'GET',
           redirect: 'follow', 
@@ -242,7 +253,6 @@ const api = {
       
       if (!response.ok) throw new Error(`Server responded with ${response.status}`);
       
-      // Parse JSON carefully
       const text = await response.text();
       let rawData;
       try {
@@ -252,32 +262,66 @@ const api = {
           throw new Error("Invalid JSON response");
       }
       
-      // Normalize Data immediately upon receipt
+      // Normalize Data
       const normalizedData: Record<string, string[]> = {};
       
-      if (rawData && typeof rawData === 'object') {
-          Object.keys(rawData).forEach(key => {
-              const cleanDateKey = normalizeDateKey(key);
-              
+      const processEntry = (dateVal: any, timeVal: any) => {
+          if (!dateVal || !timeVal) return;
+          
+          const cleanDateKey = normalizeDateKey(dateVal);
+          const cleanTime = normalizeTime(timeVal);
+          
+          if (cleanDateKey && cleanTime) {
               if (!normalizedData[cleanDateKey]) {
                   normalizedData[cleanDateKey] = [];
               }
+              // Avoid duplicates
+              if (!normalizedData[cleanDateKey].includes(cleanTime)) {
+                  normalizedData[cleanDateKey].push(cleanTime);
+              }
+          }
+      };
 
-              const times = Array.isArray(rawData[key]) ? rawData[key] : [];
-              times.forEach((t: any) => {
-                  const cleanTime = normalizeTime(t);
-                  if (cleanTime) {
-                      normalizedData[cleanDateKey].push(cleanTime);
+      // Handle Array response (List of rows - covering direct DB dumps of Col A, B)
+      if (Array.isArray(rawData)) {
+          rawData.forEach((row: any) => {
+              // Try various casing or positions for Date/Time columns
+              // Supports: row.date, row.Date, row[0] (if array), etc.
+              const dateVal = row.date || row.Date || row.DATE || (Array.isArray(row) ? row[0] : undefined);
+              const timeVal = row.time || row.Time || row.TIME || (Array.isArray(row) ? row[1] : undefined);
+              processEntry(dateVal, timeVal);
+          });
+      } else if (rawData && typeof rawData === 'object') {
+          // Handle Object grouped by date
+          Object.keys(rawData).forEach(key => {
+              // If the object key itself is a date (e.g. {"2025-12-14": ["09:00"]})
+              // OR if the object contains a 'data' array property
+              if (Array.isArray(rawData[key])) {
+                  // Check if the key is a date
+                  const cleanKey = normalizeDateKey(key);
+                  if (cleanKey) {
+                      rawData[key].forEach((t: any) => {
+                          // Could be string "09:00" or object {time: "09:00"}
+                          const tVal = (typeof t === 'object' && t !== null) ? (t.time || t.Time) : t;
+                          processEntry(cleanKey, tVal);
+                      });
+                  } else {
+                      // Maybe rawData is { "data": [...] }
+                      rawData[key].forEach((row: any) => {
+                          const dateVal = row.date || row.Date || (Array.isArray(row) ? row[0] : undefined);
+                          const timeVal = row.time || row.Time || (Array.isArray(row) ? row[1] : undefined);
+                          processEntry(dateVal, timeVal);
+                      });
                   }
-              });
+              }
           });
       }
 
+      console.log("Parsed Slots:", normalizedData); // Debug log (visible in console)
       return { connected: true, slots: normalizedData };
     } catch (error) {
-      console.warn("API connection failed. Switching to Demo Mode.", error);
-      // Fallback to demo data instead of showing error
-      return { connected: false, slots: mockSlots }; // Changed to connected: false to trigger UI indicator
+      console.warn("API connection failed. Switching to Offline Mode.", error);
+      return { connected: false, slots: mockSlots };
     }
   },
 
@@ -292,7 +336,6 @@ const api = {
       return Array.isArray(data) ? data : [];
     } catch (error) {
       console.warn("Failed to fetch client bookings, using demo data", error);
-      // Return mock booking for demo
       return [
         { 
           date: getDateKey(new Date()), 
@@ -332,7 +375,6 @@ const api = {
       return { success: true };
     } catch (error) {
       console.error("Error saving booking (Demo mode activated):", error);
-      // Simulate success delay
       await new Promise(resolve => setTimeout(resolve, 1500));
       return { success: true };
     }
@@ -406,7 +448,7 @@ const generateTimeSlots = (
   return slots;
 };
 
-// --- Components ---
+// ... (Rest of components are largely the same, I will only output changes in DateSelection) ...
 
 function App() {
   const [state, setState] = useState<AppointmentState>({
@@ -580,6 +622,7 @@ function App() {
 }
 
 // --- Sub-Components ---
+// ManageLogin, ManageList, HeroSection, ServiceSelection are same. 
 
 function ManageLogin({ onLogin, onBack }: { onLogin: (phone: string) => void, onBack: () => void }) {
   const [phone, setPhone] = useState("");
@@ -841,11 +884,11 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
   const [bookedSlots, setBookedSlots] = useState<Record<string, string[]>>({});
   const [retryCount, setRetryCount] = useState(0);
 
-  // Poll for updates every 30 seconds to keep slots up to date (Real-time awareness)
+  // Poll for updates every 10 seconds (Constant updates)
   useEffect(() => {
     const interval = setInterval(() => {
         setRetryCount(prev => prev + 1);
-    }, 30000); 
+    }, 10000); 
     return () => clearInterval(interval);
   }, []);
 
@@ -853,7 +896,9 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
     // Fetch data from API (or Mock) when component mounts
     let mounted = true;
     const loadData = async () => {
-      setIsLoading(true);
+      // Only show full loading spinner on first load, otherwise background refresh
+      if (retryCount === 0) setIsLoading(true);
+      
       setConnectionError(false);
       const result = await api.fetchBookedSlots();
       if (mounted) {
@@ -885,13 +930,22 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
             <button onClick={onBack} className="p-2 rounded-full hover:bg-white/50"><ChevronRight /></button>
             <h2 className="text-2xl font-bold">מתי נוח לך?</h2>
         </div>
-        <button 
-            onClick={() => setRetryCount(c => c + 1)} 
-            className="p-2 rounded-full hover:bg-white/50 text-slate-400"
-            title="רענן נתונים כעת"
-        >
-            <RefreshCw size={20} className={isLoading ? "animate-spin" : ""} />
-        </button>
+        
+        <div className="flex items-center gap-2">
+            {!isLoading && !connectionError && (
+                 <span className="flex items-center gap-1 text-[10px] text-green-600 font-medium bg-green-50 px-2 py-1 rounded-full animate-pulse">
+                    <Zap size={10} fill="currentColor" />
+                    מסנכרן
+                 </span>
+            )}
+            <button 
+                onClick={() => setRetryCount(c => c + 1)} 
+                className="p-2 rounded-full hover:bg-white/50 text-slate-400"
+                title="רענן נתונים כעת"
+            >
+                <RefreshCw size={20} className={isLoading ? "animate-spin" : ""} />
+            </button>
+        </div>
       </div>
 
       {connectionError && (
@@ -931,7 +985,7 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
       <div className={`space-y-2 transition-opacity duration-300 flex-1 ${selectedDate ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
         <label className="text-sm font-medium text-slate-700">בחרי שעה</label>
         
-        {isLoading ? (
+        {isLoading && retryCount === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-slate-400">
              <Loader2 size={32} className="animate-spin mb-2" />
              <p className="text-sm">בודק זמינות...</p>
@@ -1005,7 +1059,7 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
 
       <button
         onClick={onNext}
-        disabled={!isValid || isLoading || connectionError}
+        disabled={!isValid || (isLoading && retryCount === 0) || connectionError}
         className="w-full bg-pink-500 text-white py-4 rounded-xl font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-pink-600 transition-colors"
       >
         המשך לפרטים
@@ -1014,6 +1068,7 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
   );
 }
 
+// ... (Rest of components: ClientDetails, Confirmation, WaitingListConfirmation, AIConsultant, etc.) ...
 function ClientDetails({ name, phone, email, onChange, onNext, onBack, isWaitingList, isLoading }: any) {
   const cleanPhone = phone.replace(/\D/g, '');
   const isPhoneValid = cleanPhone.length === 10;
