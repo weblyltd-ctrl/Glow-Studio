@@ -401,12 +401,21 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-white text-slate-800 font-sans selection:bg-pink-200 selection:text-pink-900 pb-20 md:pb-0">
+    <div className="min-h-screen bg-[#FAFAFA] text-slate-800 font-sans selection:bg-pink-200 selection:text-pink-900 pb-20 md:pb-0 relative overflow-x-hidden">
+      
+      {/* Background Decor */}
+      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] right-[-10%] w-[600px] h-[600px] bg-rose-50 rounded-full blur-[80px] opacity-70"></div>
+        <div className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-pink-50 rounded-full blur-[80px] opacity-70"></div>
+        <div className="absolute top-[40%] left-[20%] w-[300px] h-[300px] bg-slate-100 rounded-full blur-[60px] opacity-50"></div>
+      </div>
+
+      <div className="relative z-10">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-pink-100 shadow-sm">
-        <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
+      <header className="sticky top-0 z-40 bg-white/70 backdrop-blur-lg border-b border-white/50 shadow-sm">
+        <div className="w-full max-w-lg mx-auto px-3 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2 cursor-pointer" onClick={resetFlow}>
-            <div className="w-8 h-8 bg-pink-500 rounded-full flex items-center justify-center text-white font-bold text-lg">
+            <div className="w-8 h-8 bg-gradient-to-tr from-pink-500 to-rose-400 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md">
               G
             </div>
             <span className="text-xl font-bold tracking-tight text-slate-900">Glow Studio</span>
@@ -414,7 +423,7 @@ function App() {
           
           <div className="flex items-center gap-3">
              {state.step === 'home' ? (
-                <button onClick={() => nextStep('manage-login')} className="flex items-center gap-1 text-sm text-slate-600 hover:text-pink-600 transition bg-slate-50 px-3 py-1.5 rounded-full border border-slate-200">
+                <button onClick={() => nextStep('manage-login')} className="flex items-center gap-1 text-sm text-slate-600 hover:text-pink-600 transition bg-white/80 px-3 py-1.5 rounded-full border border-slate-200/50 shadow-sm hover:shadow-md">
                   <User size={14} />
                   <span className="hidden sm:inline">התורים שלי</span>
                 </button>
@@ -427,7 +436,7 @@ function App() {
         </div>
       </header>
 
-      <main className="max-w-md mx-auto px-4 py-6">
+      <main className="w-full max-w-lg mx-auto px-3 md:px-4 py-6">
         {state.step === "home" && (
           <HeroSection onStart={() => nextStep("services")} />
         )}
@@ -513,6 +522,7 @@ function App() {
       {isChatOpen && (
         <AIConsultant onClose={() => setIsChatOpen(false)} />
       )}
+      </div>
     </div>
   );
 }
@@ -526,12 +536,12 @@ function ManageLogin({ onLogin, onBack }: { onLogin: (phone: string) => void, on
   return (
     <div className="space-y-6 animate-fade-in-up">
        <div className="flex items-center gap-4">
-        <button onClick={onBack} className="p-2 rounded-full hover:bg-slate-100"><ChevronRight /></button>
+        <button onClick={onBack} className="p-2 rounded-full hover:bg-white/50"><ChevronRight /></button>
         <h2 className="text-2xl font-bold">ניהול תורים</h2>
       </div>
       
       <div className="space-y-4">
-        <div className="bg-pink-50 p-4 rounded-xl flex items-center gap-3 text-pink-800">
+        <div className="bg-white/60 p-4 rounded-xl flex items-center gap-3 text-pink-800 border border-pink-100 shadow-sm">
            <Info size={20} />
            <p className="text-sm">הזיני את מספר הטלפון איתו נרשמת כדי לצפות ולבטל תורים עתידיים.</p>
         </div>
@@ -543,7 +553,7 @@ function ManageLogin({ onLogin, onBack }: { onLogin: (phone: string) => void, on
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="050-0000000"
-            className="w-full p-4 rounded-xl border border-slate-200 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none transition-all bg-slate-50 focus:bg-white text-lg tracking-wide"
+            className="w-full p-4 rounded-xl border border-slate-200 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none transition-all bg-white/70 focus:bg-white text-lg tracking-wide shadow-sm"
           />
         </div>
       </div>
@@ -594,7 +604,7 @@ function ManageList({ phone, onBack }: { phone: string, onBack: () => void }) {
   return (
     <div className="space-y-6 animate-fade-in-up h-full flex flex-col">
        <div className="flex items-center gap-4">
-        <button onClick={onBack} className="p-2 rounded-full hover:bg-slate-100"><ChevronRight /></button>
+        <button onClick={onBack} className="p-2 rounded-full hover:bg-white/50"><ChevronRight /></button>
         <h2 className="text-2xl font-bold">התורים שלי</h2>
       </div>
 
@@ -604,7 +614,7 @@ function ManageList({ phone, onBack }: { phone: string, onBack: () => void }) {
            <p className="text-sm">טוען נתונים...</p>
         </div>
       ) : bookings.length === 0 ? (
-        <div className="text-center py-12 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+        <div className="text-center py-12 bg-white/60 rounded-xl border border-dashed border-slate-300 shadow-sm">
            <CalendarDays size={48} className="mx-auto text-slate-300 mb-3" />
            <p className="text-slate-500 font-medium">לא נמצאו תורים עתידיים</p>
            <button onClick={onBack} className="text-pink-600 text-sm mt-2 font-medium hover:underline">קבעי תור חדש</button>
@@ -615,7 +625,7 @@ function ManageList({ phone, onBack }: { phone: string, onBack: () => void }) {
              const isCanceling = canceling === (booking.date + booking.time);
              const dateObj = new Date(booking.date);
              return (
-               <div key={idx} className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex items-center justify-between">
+               <div key={idx} className="bg-white/80 backdrop-blur-sm border border-slate-100 rounded-2xl p-4 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
                   <div>
                     <h3 className="font-bold text-slate-900">{booking.service}</h3>
                     <div className="flex items-center gap-2 text-sm text-slate-500 mt-1">
@@ -644,25 +654,25 @@ function ManageList({ phone, onBack }: { phone: string, onBack: () => void }) {
 
 function HeroSection({ onStart }: { onStart: () => void }) {
   return (
-    <div className="flex flex-col items-center text-center space-y-8 py-8 animate-fade-in">
-      <div className="relative">
-        <div className="absolute inset-0 bg-pink-200 blur-3xl opacity-30 rounded-full w-48 h-48 -z-10 animate-pulse"></div>
+    <div className="flex flex-col items-center text-center space-y-8 py-8 animate-fade-in relative z-10">
+      <div className="relative group cursor-pointer" onClick={onStart}>
+        <div className="absolute inset-0 bg-pink-300 blur-2xl opacity-40 rounded-full w-48 h-48 -z-10 group-hover:opacity-60 transition-opacity duration-700"></div>
         <img 
-          src="https://images.unsplash.com/photo-1587575494201-11fe74d90d38?auto=format&fit=crop&q=80&w=400&h=400" 
-          alt="Eye makeup" 
-          className="w-48 h-48 object-cover rounded-full border-4 border-white shadow-xl mx-auto"
+          src="https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?auto=format&fit=crop&q=80&w=400&h=400" 
+          alt="Beauty Care" 
+          className="w-48 h-48 object-cover rounded-full border-4 border-white shadow-xl mx-auto transform group-hover:scale-105 transition-transform duration-500"
         />
-        <div className="absolute -bottom-2 -right-2 bg-white p-2 rounded-full shadow-md">
+        <div className="absolute -bottom-2 -right-2 bg-white p-2 rounded-full shadow-md animate-bounce-slow">
           <Star className="text-yellow-400 fill-yellow-400" size={24} />
         </div>
       </div>
       
       <div className="space-y-2">
-        <h1 className="text-3xl font-extrabold text-slate-900 leading-tight">
-          העיניים שלך,<br/> <span className="text-pink-500">האומנות שלנו.</span>
+        <h1 className="text-3xl font-extrabold text-slate-900 leading-tight drop-shadow-sm">
+          העיניים שלך,<br/> <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-600 to-rose-400">האומנות שלנו.</span>
         </h1>
-        <p className="text-slate-500 text-lg px-4">
-          עיצוב גבות וריסים ברמה הגבוהה ביותר, בהתאמה אישית למבנה הפנים שלך.
+        <p className="text-slate-600 text-lg px-4 font-medium">
+          עיצוב גבות וריסים ברמה הגבוהה ביותר,<br/> בהתאמה אישית למבנה הפנים שלך.
         </p>
       </div>
 
@@ -674,8 +684,8 @@ function HeroSection({ onStart }: { onStart: () => void }) {
           <Calendar size={20} />
           קבעי תור עכשיו
         </button>
-        <p className="text-xs text-slate-400">פגישת ייעוץ ללא עלות • חניה חינם</p>
-        <p className="text-xs text-slate-400 font-medium">ימים א'-ה' • 09:00 - 18:00</p>
+        <p className="text-xs text-slate-500 font-medium">פגישת ייעוץ ללא עלות • חניה חינם</p>
+        <p className="text-xs text-slate-500 font-medium">ימים א'-ה' • 09:00 - 18:00</p>
       </div>
     </div>
   );
@@ -689,21 +699,21 @@ function ServiceSelection({ services, onSelect, onBack }: { services: Service[],
   return (
     <div className="space-y-6 animate-fade-in-up">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">בחרי טיפול</h2>
-        <button onClick={onBack} className="text-slate-400 hover:text-slate-600">
+        <h2 className="text-2xl font-bold text-slate-900">בחרי טיפול</h2>
+        <button onClick={onBack} className="text-slate-500 hover:text-slate-700 font-medium">
            חזרה
         </button>
       </div>
 
-      <div className="flex p-1 bg-slate-100 rounded-xl">
+      <div className="flex p-1 bg-white rounded-xl shadow-sm border border-slate-100">
         {(['all', 'lashes', 'brows'] as const).map((cat) => (
           <button
             key={cat}
             onClick={() => setFilter(cat)}
             className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
               filter === cat 
-                ? 'bg-white text-pink-600 shadow-sm' 
-                : 'text-slate-500 hover:text-slate-700'
+                ? 'bg-rose-50 text-pink-700 shadow-sm ring-1 ring-pink-100' 
+                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
             }`}
           >
             {cat === 'all' ? 'הכל' : cat === 'lashes' ? 'ריסים' : 'גבות'}
@@ -716,7 +726,7 @@ function ServiceSelection({ services, onSelect, onBack }: { services: Service[],
           <div 
             key={service.id}
             onClick={() => onSelect(service)}
-            className="group bg-white border border-slate-100 rounded-2xl p-4 shadow-sm hover:shadow-md hover:border-pink-200 transition-all cursor-pointer flex items-center justify-between"
+            className="group bg-white/80 backdrop-blur-sm border border-white rounded-2xl p-4 shadow-sm hover:shadow-md hover:border-pink-200 transition-all cursor-pointer flex items-center justify-between"
           >
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
@@ -732,7 +742,7 @@ function ServiceSelection({ services, onSelect, onBack }: { services: Service[],
               </div>
             </div>
             <div className="mr-4">
-              <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 group-hover:bg-pink-500 group-hover:text-white transition-colors">
+              <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 group-hover:bg-pink-500 group-hover:text-white transition-colors shadow-sm">
                 <ChevronLeft size={20} />
               </div>
             </div>
@@ -782,12 +792,12 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
     <div className="space-y-6 animate-fade-in-up h-full flex flex-col">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-            <button onClick={onBack} className="p-2 rounded-full hover:bg-slate-100"><ChevronRight /></button>
+            <button onClick={onBack} className="p-2 rounded-full hover:bg-white/50"><ChevronRight /></button>
             <h2 className="text-2xl font-bold">מתי נוח לך?</h2>
         </div>
         <button 
             onClick={() => setRetryCount(c => c + 1)} 
-            className="p-2 rounded-full hover:bg-slate-100 text-slate-400"
+            className="p-2 rounded-full hover:bg-white/50 text-slate-400"
             title="רענן נתונים"
         >
             <RefreshCw size={20} className={isLoading ? "animate-spin" : ""} />
@@ -795,7 +805,7 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
       </div>
 
       {connectionError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex gap-3 text-red-800 text-sm animate-pulse">
+        <div className="bg-red-50/80 backdrop-blur-sm border border-red-200 rounded-xl p-4 flex gap-3 text-red-800 text-sm animate-pulse">
           <WifiOff size={20} className="flex-shrink-0" />
           <div>
             <p className="font-bold">שגיאת תקשורת עם המערכת</p>
@@ -813,10 +823,10 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
               <button
                 key={i}
                 onClick={() => onDateSelect(date)}
-                className={`flex-shrink-0 w-[12%] min-w-[42px] flex flex-col items-center p-1 rounded-xl border transition-all ${
+                className={`flex-shrink-0 w-[12%] min-w-[42px] flex flex-col items-center p-1 rounded-xl border transition-all shadow-sm ${
                   selected 
                     ? 'border-pink-500 bg-pink-50 text-pink-700' 
-                    : 'border-slate-200 bg-white hover:border-pink-200 text-slate-600'
+                    : 'border-white bg-white hover:border-pink-200 text-slate-600'
                 }`}
               >
                 <span className="text-[10px]">{date.toLocaleDateString('he-IL', { month: 'short' })}</span>
@@ -848,14 +858,14 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
                 onClick={() => {
                    onTimeSelect(slot.time, isBooked);
                 }}
-                className={`relative flex flex-col items-center justify-center p-3 rounded-xl border transition-all min-h-[70px] ${
+                className={`relative flex flex-col items-center justify-center p-3 rounded-xl border transition-all min-h-[70px] shadow-sm ${
                     isSelected
                         ? isBooked
                              ? 'bg-orange-50 border-orange-500 shadow-md scale-105 z-10'
                              : 'bg-slate-900 text-white border-slate-900 shadow-lg scale-105 z-10'
                         : isBooked
-                            ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-pointer hover:bg-gray-200' 
-                            : 'bg-white text-slate-700 border-slate-200 hover:border-pink-300 hover:shadow-sm'
+                            ? 'bg-gray-100/50 border-gray-200 text-gray-400 cursor-pointer hover:bg-gray-200/50' 
+                            : 'bg-white text-slate-700 border-white hover:border-pink-300 hover:shadow-md'
                 }`}
                 >
                 <span className={`text-base font-bold ${isBooked ? 'line-through decoration-gray-400 decoration-2 opacity-50' : ''} ${isSelected && isBooked ? 'text-orange-700' : ''}`}>
@@ -879,7 +889,7 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
             })}
             </div>
         ) : (
-             <div className="text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+             <div className="text-center py-8 bg-white/60 rounded-xl border border-dashed border-slate-300 shadow-sm">
                 <p className="text-slate-500 text-sm">אין תורים פנויים בתאריך זה</p>
                 <button 
                   onClick={() => onTimeSelect("כל היום", true)}
@@ -891,7 +901,7 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
         )}
         
         {!isLoading && slots.length > 0 && (
-             <div className="mt-6 p-4 bg-pink-50 rounded-xl border border-pink-100 flex items-start gap-3">
+             <div className="mt-6 p-4 bg-pink-50/80 backdrop-blur-sm rounded-xl border border-pink-100 flex items-start gap-3 shadow-sm">
                 <Bell className="text-pink-500 flex-shrink-0 mt-1" size={16} />
                 <div>
                     <h4 className="font-bold text-sm text-pink-800">השעה הרצויה תפוסה?</h4>
@@ -923,12 +933,12 @@ function ClientDetails({ name, phone, email, onChange, onNext, onBack, isWaiting
   return (
     <div className="space-y-6 animate-fade-in-up h-full flex flex-col">
        <div className="flex items-center gap-4">
-        <button onClick={onBack} disabled={isLoading} className="p-2 rounded-full hover:bg-slate-100 disabled:opacity-50"><ChevronRight /></button>
+        <button onClick={onBack} disabled={isLoading} className="p-2 rounded-full hover:bg-white/50 disabled:opacity-50"><ChevronRight /></button>
         <h2 className="text-2xl font-bold">{isWaitingList ? 'הרשמה לרשימת המתנה' : 'פרטים אישיים'}</h2>
       </div>
       
       {isWaitingList && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex gap-3 text-yellow-800 text-sm">
+          <div className="bg-yellow-50/80 backdrop-blur-sm border border-yellow-200 rounded-xl p-4 flex gap-3 text-yellow-800 text-sm shadow-sm">
               <AlertCircle size={20} className="flex-shrink-0" />
               <div>
                 <p className="font-bold">את מצטרפת לרשימת המתנה.</p>
@@ -946,7 +956,7 @@ function ClientDetails({ name, phone, email, onChange, onNext, onBack, isWaiting
             onChange={(e) => onChange('clientName', e.target.value)}
             disabled={isLoading}
             placeholder="ישראל ישראלי"
-            className={`w-full p-4 rounded-xl border ${!isNameValid && name.length > 0 ? 'border-red-300 focus:border-red-500' : 'border-slate-200 focus:border-pink-500'} focus:ring-1 focus:ring-pink-500 outline-none transition-all bg-slate-50 focus:bg-white disabled:bg-slate-100`}
+            className={`w-full p-4 rounded-xl border ${!isNameValid && name.length > 0 ? 'border-red-300 focus:border-red-500' : 'border-slate-200 focus:border-pink-500'} focus:ring-1 focus:ring-pink-500 outline-none transition-all bg-white/70 focus:bg-white disabled:bg-slate-100 shadow-sm`}
           />
           {!isNameValid && name.length > 0 && (
              <p className="text-xs text-red-500 mt-1">נא להזין שם מלא (לפחות 2 תווים)</p>
@@ -960,7 +970,7 @@ function ClientDetails({ name, phone, email, onChange, onNext, onBack, isWaiting
             onChange={(e) => onChange('clientPhone', e.target.value)}
             disabled={isLoading}
             placeholder="050-0000000"
-            className={`w-full p-4 rounded-xl border ${!isPhoneValid && phone.length > 0 ? 'border-red-300 focus:border-red-500' : 'border-slate-200 focus:border-pink-500'} focus:ring-1 focus:ring-pink-500 outline-none transition-all bg-slate-50 focus:bg-white disabled:bg-slate-100`}
+            className={`w-full p-4 rounded-xl border ${!isPhoneValid && phone.length > 0 ? 'border-red-300 focus:border-red-500' : 'border-slate-200 focus:border-pink-500'} focus:ring-1 focus:ring-pink-500 outline-none transition-all bg-white/70 focus:bg-white disabled:bg-slate-100 shadow-sm`}
           />
           {!isPhoneValid && phone.length > 0 && (
              <p className="text-xs text-red-500 mt-1">מספר הטלפון חייב להכיל 10 ספרות</p>
@@ -974,7 +984,7 @@ function ClientDetails({ name, phone, email, onChange, onNext, onBack, isWaiting
             onChange={(e) => onChange('clientEmail', e.target.value)}
             disabled={isLoading}
             placeholder="example@mail.com"
-            className="w-full p-4 rounded-xl border border-slate-200 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none transition-all bg-slate-50 focus:bg-white disabled:bg-slate-100"
+            className="w-full p-4 rounded-xl border border-slate-200 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none transition-all bg-white/70 focus:bg-white disabled:bg-slate-100 shadow-sm"
           />
            <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
             <Info size={12} />
@@ -1003,7 +1013,7 @@ function ClientDetails({ name, phone, email, onChange, onNext, onBack, isWaiting
 function Confirmation({ state, onReset }: { state: AppointmentState, onReset: () => void }) {
   return (
     <div className="flex flex-col items-center text-center space-y-6 py-8 animate-scale-in">
-      <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-2">
+      <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-2 shadow-sm">
         <CheckCircle size={40} />
       </div>
       
@@ -1012,7 +1022,7 @@ function Confirmation({ state, onReset }: { state: AppointmentState, onReset: ()
         <p className="text-slate-500 mt-2">אישור נשלח למייל {state.clientEmail}.</p>
       </div>
 
-      <div className="w-full bg-white border border-slate-100 rounded-2xl p-6 shadow-sm space-y-4 text-right">
+      <div className="w-full bg-white/80 backdrop-blur-sm border border-white rounded-2xl p-6 shadow-sm space-y-4 text-right">
         <div className="flex justify-between items-center pb-3 border-b border-slate-50">
           <span className="text-slate-500">טיפול</span>
           <span className="font-bold text-slate-900">{state.service?.name}</span>
@@ -1050,7 +1060,7 @@ function Confirmation({ state, onReset }: { state: AppointmentState, onReset: ()
 function WaitingListConfirmation({ state, onReset }: { state: AppointmentState, onReset: () => void }) {
   return (
     <div className="flex flex-col items-center text-center space-y-6 py-8 animate-scale-in">
-      <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center text-yellow-600 mb-2">
+      <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center text-yellow-600 mb-2 shadow-sm">
         <Bell size={40} />
       </div>
       
@@ -1059,7 +1069,7 @@ function WaitingListConfirmation({ state, onReset }: { state: AppointmentState, 
         <p className="text-slate-500 mt-2">אם יתפנה תור בתאריך ובשעה שביקשת, נעדכן אותך מיידית.</p>
       </div>
 
-      <div className="w-full bg-white border border-slate-100 rounded-2xl p-6 shadow-sm space-y-4 text-right">
+      <div className="w-full bg-white/80 backdrop-blur-sm border border-white rounded-2xl p-6 shadow-sm space-y-4 text-right">
         <div className="flex justify-between items-center pb-3 border-b border-slate-50">
            <span className="text-slate-500">ביקשת עבור</span>
            <span className="font-bold text-slate-900">{state.service?.name}</span>
