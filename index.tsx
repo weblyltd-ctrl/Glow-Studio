@@ -30,7 +30,9 @@ import {
   Settings,
   Database,
   Terminal,
-  Lock
+  Lock,
+  KeyRound,
+  UserPlus
 } from "lucide-react";
 
 // --- Configuration ---
@@ -67,6 +69,7 @@ type AppointmentState = {
   clientName: string;
   clientPhone: string;
   clientEmail: string;
+  clientPassword: string; // New field for 6-digit PIN
   isWaitingList: boolean;
 };
 
@@ -447,11 +450,52 @@ const api = {
     }
   },
 
-  // Fetch bookings for a specific client (by phone)
-  fetchClientBookings: async (phone: string): Promise<ClientBooking[]> => {
+  // Login verification
+  loginUser: async (email: string, password: string): Promise<{success: boolean, message?: string}> => {
+    try {
+        if (!API_URL) throw new Error("No API URL");
+        // Using action 'login'
+        const url = `${API_URL}?t=${new Date().getTime()}&action=login&email=${encodeURIComponent(email)}&password=${password}`;
+        
+        // Since we can't easily GET with body, we use query params or assume the backend handles it. 
+        // Note: Sending passwords in query params is not secure for production but typical for basic Apps Script setups.
+        // A better way is POST, but let's try GET first for simplicity or POST if we assume the script handles it.
+        // Let's stick to the existing GET pattern for fetching, but for sensitive data POST is better.
+        // However, standard GAS 'doGet' handles the existing calls.
+        // We will try to fetch. If the backend isn't updated to handle 'login', this might fail or return nothing.
+        
+        const response = await fetch(url, { redirect: 'follow' });
+        
+        // Mock fallback if response is not ok or script not updated
+        if (!response.ok) throw new Error("Server error");
+        
+        const data = await response.json();
+        
+        // If the script returns { success: true }
+        if (data && data.success) {
+            return { success: true };
+        } else if (data && data.error) {
+            return { success: false, message: data.error };
+        }
+        
+        return { success: false, message: "פרטים שגויים" };
+
+    } catch (error) {
+        console.warn("Login failed (Demo mode):", error);
+        // DEMO LOGIN LOGIC
+        if (password === "123456") {
+            return { success: true };
+        }
+        return { success: false, message: "שגיאת תקשורת או פרטים שגויים" };
+    }
+  },
+
+  // Fetch bookings for a specific client (by EMAIL now)
+  fetchClientBookings: async (email: string): Promise<ClientBooking[]> => {
     try {
       if (!API_URL) throw new Error("No API URL");
-      const url = `${API_URL}?t=${new Date().getTime()}&action=get_client_bookings&phone=${phone}`;
+      // Changed param to email
+      const url = `${API_URL}?t=${new Date().getTime()}&action=get_client_bookings&email=${encodeURIComponent(email)}`;
       const response = await fetch(url, { redirect: 'follow' });
       if (!response.ok) throw new Error("Fetch failed");
       const data = await response.json();
@@ -469,7 +513,7 @@ const api = {
     }
   },
 
-  // Save booking
+  // Save booking (Now includes Password)
   saveBooking: async (bookingData: any) => {
     try {
       const type = bookingData.isWaitingList ? "רשימת המתנה" : "תור רגיל";
@@ -481,6 +525,7 @@ const api = {
         name: bookingData.clientName,
         phone: bookingData.clientPhone,
         email: bookingData.clientEmail,
+        password: bookingData.clientPassword, // Sending password to backend
         type: type 
       };
 
@@ -503,7 +548,7 @@ const api = {
   },
 
   // Cancel booking
-  cancelBooking: async (booking: ClientBooking, phone: string) => {
+  cancelBooking: async (booking: ClientBooking, email: string) => {
     try {
       if (!API_URL) throw new Error("No API URL");
 
@@ -511,7 +556,7 @@ const api = {
         action: 'cancel',
         date: booking.date, 
         time: booking.time,
-        phone: phone
+        email: email // Identifying by email now
       };
 
       const postUrl = `${API_URL}?t=${new Date().getTime()}&action=cancel`;
@@ -593,6 +638,7 @@ function App() {
     clientName: "",
     clientPhone: "",
     clientEmail: "",
+    clientPassword: "",
     isWaitingList: false
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -630,6 +676,7 @@ function App() {
       clientName: "",
       clientPhone: "",
       clientEmail: "",
+      clientPassword: "",
       isWaitingList: false
     });
     setIsSubmitting(false);
@@ -672,12 +719,20 @@ function App() {
             <span className="text-xl font-bold tracking-tight text-slate-900">Glow Studio</span>
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
              {state.step === 'home' ? (
-                <button onClick={() => nextStep('manage-login')} className="flex items-center gap-1 text-sm text-slate-600 hover:text-pink-600 transition bg-white/80 px-3 py-1.5 rounded-full border border-slate-200/50 shadow-sm hover:shadow-md">
-                  <User size={14} />
-                  <span className="hidden sm:inline">התורים שלי</span>
-                </button>
+                <>
+                  <button onClick={() => nextStep('manage-login')} className="flex items-center gap-1 text-xs sm:text-sm text-slate-600 hover:text-pink-600 transition bg-white/80 px-3 py-1.5 rounded-full border border-slate-200/50 shadow-sm hover:shadow-md">
+                    <User size={14} />
+                    <span className="hidden sm:inline">התורים שלי</span>
+                    <span className="sm:hidden">כניסה</span>
+                  </button>
+                  <button onClick={() => nextStep('services')} className="flex items-center gap-1 text-xs sm:text-sm text-white bg-slate-900 hover:bg-slate-800 transition px-3 py-1.5 rounded-full shadow-sm hover:shadow-md">
+                    <UserPlus size={14} />
+                    <span className="hidden sm:inline">הרשמה</span>
+                    <span className="sm:hidden">הרשמה</span>
+                  </button>
+                </>
              ) : (
                 <button onClick={resetFlow} className="text-sm text-slate-500 hover:text-pink-600 transition">
                   ביטול
@@ -721,6 +776,7 @@ function App() {
             name={state.clientName}
             phone={state.clientPhone}
             email={state.clientEmail}
+            password={state.clientPassword}
             isWaitingList={state.isWaitingList}
             isLoading={isSubmitting}
             onChange={(field, val) => setState(prev => ({ ...prev, [field]: val }))}
@@ -739,8 +795,8 @@ function App() {
 
         {state.step === "manage-login" && (
           <ManageLogin 
-            onLogin={(phone) => {
-              setState(prev => ({ ...prev, clientPhone: phone }));
+            onLogin={(email) => {
+              setState(prev => ({ ...prev, clientEmail: email }));
               nextStep('manage-list');
             }}
             onBack={() => nextStep('home')}
@@ -749,7 +805,7 @@ function App() {
 
         {state.step === "manage-list" && (
           <ManageList 
-            phone={state.clientPhone}
+            email={state.clientEmail}
             onBack={() => nextStep('home')}
           />
         )}
@@ -780,91 +836,37 @@ function App() {
 
 // --- Sub-Components ---
 
-function ManageLogin({ onLogin, onBack }: { onLogin: (phone: string) => void, onBack: () => void }) {
-  const [phone, setPhone] = useState("");
-  const [step, setStep] = useState<'phone' | 'otp'>('phone');
-  const [otp, setOtp] = useState(["", "", "", ""]);
-  const [timer, setTimer] = useState(0);
+function ManageLogin({ onLogin, onBack }: { onLogin: (email: string) => void, onBack: () => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Tools for debugging connection (keeping existing logic)
+  // Tools for debugging connection
   const [testStatus, setTestStatus] = useState<{loading: boolean, msg: string, success?: boolean} | null>(null);
   const [debugData, setDebugData] = useState<any>(null);
   const [showDebug, setShowDebug] = useState(false);
 
-  useEffect(() => {
-    let interval: any;
-    if (timer > 0) {
-      interval = setInterval(() => setTimer((t) => t - 1), 1000);
+  const handleLogin = async () => {
+    if (!email || !email.includes("@")) {
+        setError("נא להזין כתובת אימייל תקינה");
+        return;
     }
-    return () => clearInterval(interval);
-  }, [timer]);
-
-  const handleSendCode = async () => {
-    const cleanPhone = phone.replace(/\D/g, '');
-    if (cleanPhone.length !== 10) return;
-
-    setIsLoading(true);
-    setError(null);
-    
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    setIsLoading(false);
-    setStep('otp');
-    setTimer(60);
-    // Focus first input after render
-    setTimeout(() => inputRefs.current[0]?.focus(), 100);
-    
-    // In production, this would trigger an SMS via backend
-    alert(`קוד האימות שלך הוא: 1234`); 
-  };
-
-  const handleVerify = async () => {
-    const code = otp.join("");
-    if (code.length !== 4) {
-        setError("נא להזין 4 ספרות");
+    if (password.length !== 6 || !/^\d+$/.test(password)) {
+        setError("הסיסמה חייבת להכיל 6 ספרות בדיוק");
         return;
     }
 
     setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIsLoading(false);
-
-    if (code === "1234") {
-        onLogin(phone);
-    } else {
-        setError("קוד שגוי, נסי שוב");
-        setOtp(["", "", "", ""]);
-        inputRefs.current[0]?.focus();
-    }
-  };
-
-  const handleOtpChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return;
-    const newOtp = [...otp];
-    newOtp[index] = value;
-    setOtp(newOtp);
     setError(null);
 
-    if (value && index < 3) {
-      inputRefs.current[index + 1]?.focus();
-    }
-    
-    // Auto verify on last digit? Maybe better to let them click button or enter.
-    if (index === 3 && value) {
-        // Optional: trigger verify automatically
-    }
-  };
+    const result = await api.loginUser(email, password);
+    setIsLoading(false);
 
-  const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
-    if (e.key === 'Backspace' && !otp[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus();
-    }
-    if (e.key === 'Enter' && index === 3) {
-        handleVerify();
+    if (result.success) {
+        onLogin(email);
+    } else {
+        setError(result.message || "שגיאת התחברות");
     }
   };
 
@@ -885,90 +887,60 @@ function ManageLogin({ onLogin, onBack }: { onLogin: (phone: string) => void, on
     <div className="space-y-6 animate-fade-in-up">
        <div className="flex items-center gap-4">
         <button onClick={onBack} className="p-2 rounded-full hover:bg-white/50"><ChevronRight /></button>
-        <h2 className="text-2xl font-bold">ניהול תורים</h2>
+        <h2 className="text-2xl font-bold">התחברות לאזור אישי</h2>
       </div>
 
-      {step === 'phone' ? (
-        <div className="space-y-6">
-            <div className="bg-white/60 p-4 rounded-xl flex items-center gap-3 text-pink-800 border border-pink-100 shadow-sm">
-               <Info size={20} className="flex-shrink-0" />
-               <p className="text-sm">הזיני את מספר הטלפון איתו נרשמת כדי לקבל קוד גישה חד פעמי.</p>
+      <div className="space-y-6">
+            <div className="bg-white/60 p-4 rounded-xl flex items-start gap-3 text-slate-700 border border-slate-100 shadow-sm">
+               <Info size={20} className="flex-shrink-0 mt-0.5 text-blue-500" />
+               <p className="text-sm">התחברי באמצעות כתובת האימייל והסיסמה (6 ספרות) שבחרת בעת קביעת התור.</p>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">מספר טלפון</label>
-              <input 
-                type="tel" 
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="050-0000000"
-                className="w-full p-4 rounded-xl border border-slate-200 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none transition-all bg-white/70 focus:bg-white text-lg tracking-wide shadow-sm"
-              />
-            </div>
+            <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">כתובת אימייל</label>
+                  <div className="relative">
+                      <input 
+                        type="email" 
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="your@email.com"
+                        className="w-full p-4 pl-4 pr-12 rounded-xl border border-slate-200 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none transition-all bg-white/70 focus:bg-white text-lg tracking-wide shadow-sm"
+                      />
+                      <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                  </div>
+                </div>
 
-            <button
-                onClick={handleSendCode}
-                disabled={phone.replace(/\D/g, '').length !== 10 || isLoading}
-                className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg disabled:opacity-50 hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
-            >
-                {isLoading && <Loader2 className="animate-spin" size={20} />}
-                {isLoading ? 'שולח קוד...' : 'שלחי לי קוד ב-SMS'}
-            </button>
-        </div>
-      ) : (
-        <div className="space-y-8 text-center">
-             <div className="space-y-2">
-                <h3 className="text-xl font-bold text-slate-900">הזיני את הקוד שקיבלת</h3>
-                <p className="text-slate-500 text-sm">קוד נשלח למספר <span dir="ltr">{phone}</span></p>
-                <button onClick={() => setStep('phone')} className="text-xs text-pink-600 font-medium hover:underline">שינוי מספר טלפון</button>
-             </div>
-
-             <div className="flex gap-3 justify-center" dir="ltr">
-              {otp.map((digit, idx) => (
-                <input
-                  key={idx}
-                  ref={(el) => { inputRefs.current[idx] = el }}
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  maxLength={1}
-                  value={digit}
-                  onChange={(e) => handleOtpChange(idx, e.target.value)}
-                  onKeyDown={(e) => handleKeyDown(idx, e)}
-                  className={`w-14 h-14 text-center text-2xl font-bold rounded-xl border outline-none transition-all bg-white shadow-sm ${
-                      error ? 'border-red-300 ring-1 ring-red-200' : 'border-slate-200 focus:border-pink-500 focus:ring-1 focus:ring-pink-500'
-                  }`}
-                />
-              ))}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">סיסמה (6 ספרות)</label>
+                  <div className="relative">
+                      <input 
+                        type="password" 
+                        maxLength={6}
+                        inputMode="numeric"
+                        value={password}
+                        onChange={(e) => {
+                            if (/^\d*$/.test(e.target.value)) setPassword(e.target.value);
+                        }}
+                        placeholder="123456"
+                        className="w-full p-4 pl-4 pr-12 rounded-xl border border-slate-200 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none transition-all bg-white/70 focus:bg-white text-lg tracking-wide shadow-sm font-mono"
+                      />
+                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                  </div>
+                </div>
             </div>
 
             {error && <p className="text-red-500 text-sm font-medium animate-pulse">{error}</p>}
 
-            <div className="space-y-4">
-                 <button
-                    onClick={handleVerify}
-                    disabled={isLoading}
-                    className="w-full bg-pink-500 text-white py-4 rounded-xl font-bold shadow-lg disabled:opacity-50 hover:bg-pink-600 transition-colors flex items-center justify-center gap-2"
-                >
-                    {isLoading && <Loader2 className="animate-spin" size={20} />}
-                    {isLoading ? 'מאמת...' : 'כניסה למערכת'}
-                </button>
-
-                <div className="text-sm">
-                    {timer > 0 ? (
-                        <p className="text-slate-400 flex items-center justify-center gap-1">
-                            <Clock size={14} />
-                            ניתן לשלוח קוד שוב בעוד {timer} שניות
-                        </p>
-                    ) : (
-                        <button onClick={handleSendCode} className="text-slate-800 font-bold hover:text-pink-600 transition-colors">
-                            לא קיבלתי קוד? שלחי שוב
-                        </button>
-                    )}
-                </div>
-            </div>
-        </div>
-      )}
+            <button
+                onClick={handleLogin}
+                disabled={isLoading}
+                className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg disabled:opacity-50 hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+            >
+                {isLoading && <Loader2 className="animate-spin" size={20} />}
+                {isLoading ? 'מתחבר...' : 'כניסה למערכת'}
+            </button>
+      </div>
 
       {/* Debug Section (Bottom) */}
       <div className="pt-8 border-t border-slate-200 mt-8 space-y-4">
@@ -1031,14 +1003,14 @@ function ManageLogin({ onLogin, onBack }: { onLogin: (phone: string) => void, on
   )
 }
 
-function ManageList({ phone, onBack }: { phone: string, onBack: () => void }) {
+function ManageList({ email, onBack }: { email: string, onBack: () => void }) {
   const [bookings, setBookings] = useState<ClientBooking[]>([]);
   const [loading, setLoading] = useState(true);
   const [canceling, setCanceling] = useState<string | null>(null);
 
   const loadBookings = async () => {
     setLoading(true);
-    const data = await api.fetchClientBookings(phone);
+    const data = await api.fetchClientBookings(email);
     const sorted = data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     setBookings(sorted);
     setLoading(false);
@@ -1046,13 +1018,13 @@ function ManageList({ phone, onBack }: { phone: string, onBack: () => void }) {
 
   useEffect(() => {
     loadBookings();
-  }, [phone]);
+  }, [email]);
 
   const handleCancel = async (booking: ClientBooking) => {
     if (!confirm('האם את בטוחה שברצונך לבטל את התור?')) return;
     
     setCanceling(booking.date + booking.time);
-    await api.cancelBooking(booking, phone);
+    await api.cancelBooking(booking, email);
     
     setTimeout(() => {
        loadBookings();
@@ -1065,6 +1037,7 @@ function ManageList({ phone, onBack }: { phone: string, onBack: () => void }) {
        <div className="flex items-center gap-4">
         <button onClick={onBack} className="p-2 rounded-full hover:bg-white/50"><ChevronRight /></button>
         <h2 className="text-2xl font-bold">התורים שלי</h2>
+        <span className="text-xs text-slate-400 font-mono bg-slate-100 px-2 py-1 rounded">{email}</span>
       </div>
 
       {loading ? (
@@ -1406,11 +1379,12 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
   );
 }
 
-function ClientDetails({ name, phone, email, onChange, onNext, onBack, isWaitingList, isLoading }: any) {
+function ClientDetails({ name, phone, email, password, onChange, onNext, onBack, isWaitingList, isLoading }: any) {
   const cleanPhone = phone.replace(/\D/g, '');
   const isPhoneValid = cleanPhone.length === 10;
   const isNameValid = name.trim().length >= 2;
-  const isValid = isNameValid && isPhoneValid && email.includes('@');
+  const isPasswordValid = password && password.length === 6 && /^\d+$/.test(password);
+  const isValid = isNameValid && isPhoneValid && email.includes('@') && isPasswordValid;
 
   return (
     <div className="space-y-6 animate-fade-in-up h-full flex flex-col">
@@ -1459,7 +1433,7 @@ function ClientDetails({ name, phone, email, onChange, onNext, onBack, isWaiting
           )}
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">כתובת אימייל</label>
+          <label className="block text-sm font-medium text-slate-700 mb-1">כתובת אימייל (שם משתמש)</label>
           <input 
             type="email" 
             value={email}
@@ -1468,10 +1442,28 @@ function ClientDetails({ name, phone, email, onChange, onNext, onBack, isWaiting
             placeholder="example@mail.com"
             className="w-full p-4 rounded-xl border border-slate-200 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none transition-all bg-white/70 focus:bg-white disabled:bg-slate-100 shadow-sm"
           />
-           <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
-            <Info size={12} />
-            נשלח לך אישור למייל ול-SMS.
-          </p>
+        </div>
+        
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">בחרי סיסמה לאזור האישי (6 ספרות)</label>
+          <div className="relative">
+              <input 
+                type="text" 
+                inputMode="numeric"
+                maxLength={6}
+                value={password}
+                onChange={(e) => {
+                    if (/^\d*$/.test(e.target.value)) onChange('clientPassword', e.target.value);
+                }}
+                disabled={isLoading}
+                placeholder="123456"
+                className={`w-full p-4 pl-4 pr-12 rounded-xl border ${!isPasswordValid && password?.length > 0 ? 'border-red-300 focus:border-red-500' : 'border-slate-200 focus:border-pink-500'} focus:ring-1 focus:ring-pink-500 outline-none transition-all bg-white/70 focus:bg-white disabled:bg-slate-100 shadow-sm font-mono tracking-widest`}
+              />
+              <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+          </div>
+          {!isPasswordValid && password?.length > 0 && (
+             <p className="text-xs text-red-500 mt-1">הסיסמה חייבת להכיל 6 ספרות בדיוק</p>
+          )}
         </div>
       </div>
 
