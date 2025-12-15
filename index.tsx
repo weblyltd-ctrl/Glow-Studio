@@ -612,7 +612,7 @@ function App() {
                   </p>
                   <div className="text-right bg-slate-50 p-4 rounded-xl text-sm space-y-2 border border-slate-200">
                       <p>1. פתח את הגיליון שלך.</p>
-                      <p>2. לך ל-Extensions > Apps Script.</p>
+                      <p>2. לך ל-Extensions &gt; Apps Script.</p>
                       <p>3. הדבק את הקוד שקיבלת ועשה Deploy (Anyone).</p>
                       <p>4. העתק את הכתובת (exec) והדבק אותה בקובץ <code>index.tsx</code>.</p>
                   </div>
@@ -1264,7 +1264,10 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
             <button onClick={onBack} className="p-2 rounded-full hover:bg-white/50"><ChevronRight /></button>
-            <h2 className="text-2xl font-bold">מתי נוח לך?</h2>
+            <div>
+                <h2 className="text-2xl font-bold leading-tight">מתי נוח לך?</h2>
+                <p className="text-sm text-pink-600 font-medium">{service?.name}</p>
+            </div>
         </div>
         
         <div className="flex items-center gap-2">
