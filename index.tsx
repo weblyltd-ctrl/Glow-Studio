@@ -24,18 +24,21 @@ import {
   Ban,
   RefreshCw,
   Activity,
-  Zap
+  Zap,
+  Radio,
+  FileWarning,
+  Settings,
+  Database,
+  Terminal,
+  Lock
 } from "lucide-react";
 
 // --- Configuration ---
 
 // ============================================================================
-// 👇 חשוב: הגדרת חיבור ל-Google Sheets (Backend) 👇
-// כדי שהמערכת תעבוד מול קובץ "Glow Studio - Sheet", יש לפתוח את ה-Sheet,
-// ללכת ל-Extensions > Apps Script, להדביק את הקוד המתאים,
-// ולבצע Deploy כ-Web App עם הרשאות "Anyone".
+// 👇 כאן להדביק את הכתובת שקיבלת בשלב ה-Deploy (סיומת /exec) 👇
 // ============================================================================
-const API_URL = "https://script.google.com/macros/s/AKfycbyw3fdH3QXT4ih2lNXASA1n5Fk31XkJpKMczfws79Iej8P5VcLtSr9yz12UTt8buLue/exec"; 
+const API_URL = "https://script.google.com/macros/s/AKfycbwYEoQI9puEnBt95qNPFJidaxpAZ2BWkMiE0Wnh03YLhNxqyV_Tp4oVC6pXSaKd8esR/exec"; 
 
 // Business Rules
 const BUSINESS_HOURS = {
@@ -139,12 +142,24 @@ const formatTime = (date: Date) => {
   return `${h}:${m}`;
 };
 
+// Helper to add minutes to HH:MM string and return new HH:MM string
+const addMinutesStr = (timeStr: string, minutesToAdd: number): string => {
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return timeStr;
+  
+  const d = new Date();
+  d.setHours(parseInt(parts[0], 10), parseInt(parts[1], 10), 0, 0);
+  d.setMinutes(d.getMinutes() + minutesToAdd);
+  
+  const h = d.getHours().toString().padStart(2, '0');
+  const m = d.getMinutes().toString().padStart(2, '0');
+  return `${h}:${m}`;
+};
+
 // Aggressive time normalizer to handle "9:00", "09:00", "9:00:00", etc.
 const normalizeTime = (t: any): string | null => {
     if (!t) return null;
     let s = String(t).trim();
-    
-    // Check for HH:MM pattern (ignoring seconds or other text)
     const match = s.match(/(\d{1,2}):(\d{2})/);
     if (match) {
         let h = match[1].padStart(2, '0');
@@ -154,30 +169,42 @@ const normalizeTime = (t: any): string | null => {
     return null;
 }
 
-// Aggressive date key cleaner
+// Aggressive date key cleaner to handle various formats from Sheets
 const normalizeDateKey = (k: any): string => {
     if (!k) return "";
+    let dateStr = String(k).trim();
     
-    let dateStr = String(k);
-    
-    // 1. Try ISO date extraction (YYYY-MM-DD)
-    // We check for T to avoid matching simple numbers incorrectly, but handle 2025-12-14
-    const isoMatch = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/);
-    if (isoMatch) {
-       // If it's a full ISO timestamp like 2025-12-13T22:00:00.000Z, we must be careful with TimeZone.
-       // Creating a Date object is safer than just regexing the string if the time part exists and might shift the day.
-       if (dateStr.includes('T') || dateStr.includes('Z')) {
-           const d = new Date(dateStr);
-           if (!isNaN(d.getTime())) {
-               return getDateKey(d); // Use local browser time conversion
-           }
-       }
-       // If it's simple YYYY-MM-DD string, trust it.
-       return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+    // 1. Handle ISO strings with time components (T or Z) FIRST.
+    // This is crucial because Google Sheets often returns dates as ISO strings at UTC midnight (or shifted).
+    // If we simply regex the first 10 chars, we might get the previous day (e.g. 2025-12-14T22:00:00.000Z is 15th in Israel).
+    // We rely on the browser's local timezone to convert it back to the correct date.
+    if (dateStr.includes('T') || dateStr.includes('Z')) {
+        const d = new Date(dateStr);
+        if (!isNaN(d.getTime())) {
+            return getDateKey(d);
+        }
     }
 
-    // 2. Try JavaScript Date object parsing
-    const d = new Date(k);
+    // 2. Check for specific "YYYY-MM-DD" format (without time).
+    // If it's just a date string, we take it as is to avoid timezone shifts on pure dates.
+    const isoDateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoDateMatch) {
+       return `${isoDateMatch[1]}-${isoDateMatch[2]}-${isoDateMatch[3]}`;
+    }
+
+    // 3. Check for "DD/MM/YYYY" or "DD.MM.YYYY" or "DD-MM-YYYY"
+    // Supports 2 digit years (e.g. 15/12/25)
+    const ilMatch = dateStr.match(/^(\d{1,2})[/. -](\d{1,2})[/. -](\d{2,4})/);
+    if (ilMatch) {
+       const day = ilMatch[1].padStart(2, '0');
+       const month = ilMatch[2].padStart(2, '0');
+       let year = ilMatch[3];
+       if (year.length === 2) year = '20' + year;
+       return `${year}-${month}-${day}`;
+    }
+
+    // 4. Fallback: Generic Date object parsing
+    const d = new Date(dateStr);
     if (!isNaN(d.getTime())) {
         return getDateKey(d);
     }
@@ -212,17 +239,27 @@ const api = {
   testConnection: async (): Promise<{ success: boolean; message: string }> => {
     if (!API_URL) return { success: false, message: "לא מוגדרת כתובת שרת (API_URL)." };
     
+    if ((API_URL as string).includes("docs.google.com") || (API_URL as string).includes("spreadsheets")) {
+        return { 
+            success: false, 
+            message: "שגיאת קונפיגורציה: הוזן קישור לגיליון (Docs) במקום קישור ל-App Script. יש להשתמש בכתובת ה-Web App המסתיימת ב-/exec." 
+        };
+    }
+
     try {
         const start = Date.now();
-        // Simple 'ping' action to check connectivity
         const response = await fetch(`${API_URL}?action=ping&t=${start}`, {
             method: 'GET',
             redirect: 'follow',
-            signal: AbortSignal.timeout(8000) // 8 second timeout
+            signal: AbortSignal.timeout(8000)
         });
         const end = Date.now();
         
         if (response.ok) {
+             const text = await response.text();
+             if (text.includes("Google Drive") || text.includes("sign in")) {
+                 return { success: false, message: "שגיאת הרשאות: יש להגדיר את הסקריפט כ-Anyone." };
+             }
             return { success: true, message: `מחובר בהצלחה! זמן תגובה: ${end - start}ms` };
         } else {
             return { success: false, message: `שגיאת שרת: ${response.status} ${response.statusText}` };
@@ -232,22 +269,50 @@ const api = {
     }
   },
 
-  // Fetch booked slots from Google Sheets
-  fetchBookedSlots: async (): Promise<{ connected: boolean; slots: Record<string, string[]> }> => {
+  // DEBUG TOOL: Fetch raw data to inspect rows
+  debugFetchRaw: async (): Promise<any> => {
+    if (!API_URL) return { error: "No API URL" };
+    try {
+        const response = await fetch(`${API_URL}?t=${Date.now()}&action=get_slots`, {
+            method: 'GET',
+            redirect: 'follow'
+        });
+        if (!response.ok) return { error: `HTTP ${response.status}` };
+        const json = await response.json();
+        return json;
+    } catch (e: any) {
+        return { error: e.message };
+    }
+  },
+
+  // Implementation of "Method 1": Fetch all raw data and filter locally
+  fetchBookedSlots: async (): Promise<{ connected: boolean; slots: Record<string, string[]>; error?: string }> => {
     const mockSlots: Record<string, string[]> = {}; 
 
-    if (!API_URL) return { connected: true, slots: mockSlots };
+    if (!API_URL) return { connected: false, slots: mockSlots, error: "Setup Required" };
+
+    if ((API_URL as string).includes("docs.google.com") || (API_URL as string).includes("spreadsheets")) {
+        return { 
+            connected: false, 
+            slots: mockSlots, 
+            error: "הוגדר קישור שגוי ל-Google Sheet (יש להשתמש בקישור Script Exec)." 
+        };
+    }
 
     try {
       const urlWithTimestamp = `${API_URL}?t=${new Date().getTime()}&action=get_slots`;
-      
       const controller = new AbortController();
       const id = setTimeout(() => controller.abort(), 8000);
 
       const response = await fetch(urlWithTimestamp, {
           method: 'GET',
           redirect: 'follow', 
-          signal: controller.signal
+          signal: controller.signal,
+          cache: 'no-store',
+          headers: {
+              'Pragma': 'no-cache',
+              'Cache-Control': 'no-cache'
+          }
       });
       clearTimeout(id);
       
@@ -255,19 +320,27 @@ const api = {
       
       const text = await response.text();
       let rawData;
+      
+      if (text.trim().startsWith("<") || text.includes("<!DOCTYPE html>")) {
+          return { 
+              connected: false, 
+              slots: mockSlots, 
+              error: "שגיאת הרשאות: ה-Script חייב להיות מוגדר כ-Anyone (ולא Only Me)." 
+          };
+      }
+
       try {
           rawData = JSON.parse(text);
       } catch (e) {
-          console.error("Failed to parse JSON response:", text.substring(0, 100));
           throw new Error("Invalid JSON response");
       }
       
-      // Normalize Data
       const normalizedData: Record<string, string[]> = {};
       
-      const processEntry = (dateVal: any, timeVal: any) => {
+      const processEntry = (dateVal: any, timeVal: any, serviceVal: any) => {
           if (!dateVal || !timeVal) return;
-          
+          if (String(dateVal).toLowerCase().includes('date') && String(timeVal).toLowerCase().includes('time')) return;
+
           const cleanDateKey = normalizeDateKey(dateVal);
           const cleanTime = normalizeTime(timeVal);
           
@@ -275,53 +348,90 @@ const api = {
               if (!normalizedData[cleanDateKey]) {
                   normalizedData[cleanDateKey] = [];
               }
-              // Avoid duplicates
+              
+              // 1. Mark the start time
               if (!normalizedData[cleanDateKey].includes(cleanTime)) {
                   normalizedData[cleanDateKey].push(cleanTime);
+              }
+
+              // 2. Check Service Duration (Column C) and mark overlapping slots
+              // This is crucial for correctly blocking subsequent slots based on existing data
+              let duration = 30; // Default minimum duration
+              if (serviceVal) {
+                  const sName = String(serviceVal).trim();
+                  const matched = SERVICES.find(s => s.name === sName || sName.includes(s.name));
+                  if (matched) {
+                      duration = matched.duration;
+                  }
+              }
+
+              // If duration > 30, block subsequent 30-min slots
+              const slotsToBlock = Math.ceil(duration / 30);
+              for (let i = 1; i < slotsToBlock; i++) {
+                   const nextSlot = addMinutesStr(cleanTime, i * 30);
+                   if (!normalizedData[cleanDateKey].includes(nextSlot)) {
+                       normalizedData[cleanDateKey].push(nextSlot);
+                   }
               }
           }
       };
 
-      // Handle Array response (List of rows - covering direct DB dumps of Col A, B)
       if (Array.isArray(rawData)) {
           rawData.forEach((row: any) => {
-              // Try various casing or positions for Date/Time columns
-              // Supports: row.date, row.Date, row[0] (if array), etc.
-              const dateVal = row.date || row.Date || row.DATE || (Array.isArray(row) ? row[0] : undefined);
-              const timeVal = row.time || row.Time || row.TIME || (Array.isArray(row) ? row[1] : undefined);
-              processEntry(dateVal, timeVal);
+              let dateVal, timeVal, serviceVal;
+              
+              if (Array.isArray(row)) {
+                  // Direct Access: Col A (0), Col B (1), Col C (2)
+                  dateVal = row[0]; 
+                  timeVal = row[1];
+                  serviceVal = row[2]; // Column C
+              } else if (typeof row === 'object') {
+                  dateVal = row.date || row.Date || row.DATE;
+                  timeVal = row.time || row.Time || row.TIME;
+                  serviceVal = row.service || row.Service || row.SERVICE;
+              }
+              processEntry(dateVal, timeVal, serviceVal);
           });
-      } else if (rawData && typeof rawData === 'object') {
-          // Handle Object grouped by date
+      } 
+      else if (rawData && typeof rawData === 'object') {
           Object.keys(rawData).forEach(key => {
-              // If the object key itself is a date (e.g. {"2025-12-14": ["09:00"]})
-              // OR if the object contains a 'data' array property
               if (Array.isArray(rawData[key])) {
-                  // Check if the key is a date
                   const cleanKey = normalizeDateKey(key);
                   if (cleanKey) {
-                      rawData[key].forEach((t: any) => {
-                          // Could be string "09:00" or object {time: "09:00"}
-                          const tVal = (typeof t === 'object' && t !== null) ? (t.time || t.Time) : t;
-                          processEntry(cleanKey, tVal);
+                      rawData[key].forEach((item: any) => {
+                          let tVal, sVal;
+                          if (typeof item === 'object' && item !== null) {
+                              tVal = item.time || item.Time;
+                              sVal = item.service || item.Service;
+                          } else {
+                              tVal = item;
+                          }
+                          processEntry(cleanKey, tVal, sVal);
                       });
                   } else {
-                      // Maybe rawData is { "data": [...] }
                       rawData[key].forEach((row: any) => {
-                          const dateVal = row.date || row.Date || (Array.isArray(row) ? row[0] : undefined);
-                          const timeVal = row.time || row.Time || (Array.isArray(row) ? row[1] : undefined);
-                          processEntry(dateVal, timeVal);
+                           let dateVal, timeVal, serviceVal;
+                           if (Array.isArray(row)) {
+                               dateVal = row[0];
+                               timeVal = row[1];
+                               serviceVal = row[2];
+                           } else {
+                               dateVal = row.date || row.Date;
+                               timeVal = row.time || row.Time;
+                               serviceVal = row.service || row.Service;
+                           }
+                          processEntry(dateVal, timeVal, serviceVal);
                       });
                   }
               }
           });
       }
 
-      console.log("Parsed Slots:", normalizedData); // Debug log (visible in console)
+      console.log("Processed Booked Slots (Real Time with Duration):", normalizedData);
       return { connected: true, slots: normalizedData };
     } catch (error) {
       console.warn("API connection failed. Switching to Offline Mode.", error);
-      return { connected: false, slots: mockSlots };
+      return { connected: false, slots: mockSlots, error: "שגיאת תקשורת כללית" };
     }
   },
 
@@ -425,21 +535,35 @@ const generateTimeSlots = (
   endTime.setHours(endHour, 0, 0, 0);
 
   const dateKey = getDateKey(date);
-  // Ensure we check against the string set
+  // bookedTimes now contains all 30-min blocks that are occupied by existing appointments
   const bookedTimes = new Set(bookedSlotsMap[dateKey] || []);
 
   while (current < endTime) {
+    // Calculate when the NEW requested service would end
     const serviceEnd = new Date(current.getTime() + durationMinutes * 60000);
     
+    // Only proceed if the service fits within business hours
     if (serviceEnd <= endTime) {
       const timeString = formatTime(current);
       
-      const isBooked = bookedTimes.has(timeString);
-      const waitingCount = isBooked ? getWaitCount(timeString) : 0;
+      let isBlocked = false;
+      // Determine how many 30-minute slots the NEW service requires
+      const slotsNeeded = Math.ceil(durationMinutes / 30);
+      
+      // Check if ALL required slots for the new service are free
+      for (let i = 0; i < slotsNeeded; i++) {
+          const slotToCheck = addMinutesStr(timeString, i * 30);
+          if (bookedTimes.has(slotToCheck)) {
+              isBlocked = true;
+              break;
+          }
+      }
+      
+      const waitingCount = isBlocked ? getWaitCount(timeString) : 0;
       
       slots.push({
         time: timeString,
-        available: !isBooked,
+        available: !isBlocked,
         waitingCount
       });
     }
@@ -447,8 +571,6 @@ const generateTimeSlots = (
   }
   return slots;
 };
-
-// ... (Rest of components are largely the same, I will only output changes in DateSelection) ...
 
 function App() {
   const [state, setState] = useState<AppointmentState>({
@@ -463,6 +585,29 @@ function App() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+
+  // If API URL is missing, show setup screen
+  if (!API_URL) {
+      return (
+          <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+              <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center space-y-6">
+                  <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto">
+                      <Settings size={32} />
+                  </div>
+                  <h1 className="text-2xl font-bold text-slate-900">הגדרת מערכת נדרשת</h1>
+                  <p className="text-slate-600">
+                      כדי שהאתר יעבוד, יש לחבר אותו לגוגל שיטס.
+                  </p>
+                  <div className="text-right bg-slate-50 p-4 rounded-xl text-sm space-y-2 border border-slate-200">
+                      <p>1. פתח את הגיליון שלך.</p>
+                      <p>2. לך ל-Extensions > Apps Script.</p>
+                      <p>3. הדבק את הקוד שקיבלת ועשה Deploy (Anyone).</p>
+                      <p>4. העתק את הכתובת (exec) והדבק אותה בקובץ <code>index.tsx</code>.</p>
+                  </div>
+              </div>
+          </div>
+      )
+  }
 
   const resetFlow = () => {
     setState({
@@ -622,22 +767,106 @@ function App() {
 }
 
 // --- Sub-Components ---
-// ManageLogin, ManageList, HeroSection, ServiceSelection are same. 
 
 function ManageLogin({ onLogin, onBack }: { onLogin: (phone: string) => void, onBack: () => void }) {
   const [phone, setPhone] = useState("");
+  const [step, setStep] = useState<'phone' | 'otp'>('phone');
+  const [otp, setOtp] = useState(["", "", "", ""]);
+  const [timer, setTimer] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Tools for debugging connection (keeping existing logic)
   const [testStatus, setTestStatus] = useState<{loading: boolean, msg: string, success?: boolean} | null>(null);
-  const isValid = phone.replace(/\D/g, '').length === 10;
+  const [debugData, setDebugData] = useState<any>(null);
+  const [showDebug, setShowDebug] = useState(false);
+
+  useEffect(() => {
+    let interval: any;
+    if (timer > 0) {
+      interval = setInterval(() => setTimer((t) => t - 1), 1000);
+    }
+    return () => clearInterval(interval);
+  }, [timer]);
+
+  const handleSendCode = async () => {
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length !== 10) return;
+
+    setIsLoading(true);
+    setError(null);
+    
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    setIsLoading(false);
+    setStep('otp');
+    setTimer(60);
+    // Focus first input after render
+    setTimeout(() => inputRefs.current[0]?.focus(), 100);
+    
+    // In production, this would trigger an SMS via backend
+    alert(`קוד האימות שלך הוא: 1234`); 
+  };
+
+  const handleVerify = async () => {
+    const code = otp.join("");
+    if (code.length !== 4) {
+        setError("נא להזין 4 ספרות");
+        return;
+    }
+
+    setIsLoading(true);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setIsLoading(false);
+
+    if (code === "1234") {
+        onLogin(phone);
+    } else {
+        setError("קוד שגוי, נסי שוב");
+        setOtp(["", "", "", ""]);
+        inputRefs.current[0]?.focus();
+    }
+  };
+
+  const handleOtpChange = (index: number, value: string) => {
+    if (!/^\d*$/.test(value)) return;
+    const newOtp = [...otp];
+    newOtp[index] = value;
+    setOtp(newOtp);
+    setError(null);
+
+    if (value && index < 3) {
+      inputRefs.current[index + 1]?.focus();
+    }
+    
+    // Auto verify on last digit? Maybe better to let them click button or enter.
+    if (index === 3 && value) {
+        // Optional: trigger verify automatically
+    }
+  };
+
+  const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
+    if (e.key === 'Backspace' && !otp[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    }
+    if (e.key === 'Enter' && index === 3) {
+        handleVerify();
+    }
+  };
 
   const handleTest = async () => {
     setTestStatus({ loading: true, msg: "בודק חיבור..." });
     const result = await api.testConnection();
     setTestStatus({ loading: false, msg: result.message, success: result.success });
-    
-    // Clear status after 5 seconds
-    setTimeout(() => {
-        if (result.success) setTestStatus(null);
-    }, 5000);
+    setTimeout(() => { if (result.success) setTestStatus(null); }, 5000);
+  };
+
+  const handleDebugFetch = async () => {
+     setDebugData("loading...");
+     const data = await api.debugFetchRaw();
+     setDebugData(data);
   };
 
   return (
@@ -646,47 +875,144 @@ function ManageLogin({ onLogin, onBack }: { onLogin: (phone: string) => void, on
         <button onClick={onBack} className="p-2 rounded-full hover:bg-white/50"><ChevronRight /></button>
         <h2 className="text-2xl font-bold">ניהול תורים</h2>
       </div>
-      
-      <div className="space-y-4">
-        <div className="bg-white/60 p-4 rounded-xl flex items-center gap-3 text-pink-800 border border-pink-100 shadow-sm">
-           <Info size={20} />
-           <p className="text-sm">הזיני את מספר הטלפון איתו נרשמת כדי לצפות ולבטל תורים עתידיים.</p>
+
+      {step === 'phone' ? (
+        <div className="space-y-6">
+            <div className="bg-white/60 p-4 rounded-xl flex items-center gap-3 text-pink-800 border border-pink-100 shadow-sm">
+               <Info size={20} className="flex-shrink-0" />
+               <p className="text-sm">הזיני את מספר הטלפון איתו נרשמת כדי לקבל קוד גישה חד פעמי.</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">מספר טלפון</label>
+              <input 
+                type="tel" 
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="050-0000000"
+                className="w-full p-4 rounded-xl border border-slate-200 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none transition-all bg-white/70 focus:bg-white text-lg tracking-wide shadow-sm"
+              />
+            </div>
+
+            <button
+                onClick={handleSendCode}
+                disabled={phone.replace(/\D/g, '').length !== 10 || isLoading}
+                className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg disabled:opacity-50 hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+            >
+                {isLoading && <Loader2 className="animate-spin" size={20} />}
+                {isLoading ? 'שולח קוד...' : 'שלחי לי קוד ב-SMS'}
+            </button>
+        </div>
+      ) : (
+        <div className="space-y-8 text-center">
+             <div className="space-y-2">
+                <h3 className="text-xl font-bold text-slate-900">הזיני את הקוד שקיבלת</h3>
+                <p className="text-slate-500 text-sm">קוד נשלח למספר <span dir="ltr">{phone}</span></p>
+                <button onClick={() => setStep('phone')} className="text-xs text-pink-600 font-medium hover:underline">שינוי מספר טלפון</button>
+             </div>
+
+             <div className="flex gap-3 justify-center" dir="ltr">
+              {otp.map((digit, idx) => (
+                <input
+                  key={idx}
+                  ref={(el) => { inputRefs.current[idx] = el }}
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={1}
+                  value={digit}
+                  onChange={(e) => handleOtpChange(idx, e.target.value)}
+                  onKeyDown={(e) => handleKeyDown(idx, e)}
+                  className={`w-14 h-14 text-center text-2xl font-bold rounded-xl border outline-none transition-all bg-white shadow-sm ${
+                      error ? 'border-red-300 ring-1 ring-red-200' : 'border-slate-200 focus:border-pink-500 focus:ring-1 focus:ring-pink-500'
+                  }`}
+                />
+              ))}
+            </div>
+
+            {error && <p className="text-red-500 text-sm font-medium animate-pulse">{error}</p>}
+
+            <div className="space-y-4">
+                 <button
+                    onClick={handleVerify}
+                    disabled={isLoading}
+                    className="w-full bg-pink-500 text-white py-4 rounded-xl font-bold shadow-lg disabled:opacity-50 hover:bg-pink-600 transition-colors flex items-center justify-center gap-2"
+                >
+                    {isLoading && <Loader2 className="animate-spin" size={20} />}
+                    {isLoading ? 'מאמת...' : 'כניסה למערכת'}
+                </button>
+
+                <div className="text-sm">
+                    {timer > 0 ? (
+                        <p className="text-slate-400 flex items-center justify-center gap-1">
+                            <Clock size={14} />
+                            ניתן לשלוח קוד שוב בעוד {timer} שניות
+                        </p>
+                    ) : (
+                        <button onClick={handleSendCode} className="text-slate-800 font-bold hover:text-pink-600 transition-colors">
+                            לא קיבלתי קוד? שלחי שוב
+                        </button>
+                    )}
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* Debug Section (Bottom) */}
+      <div className="pt-8 border-t border-slate-200 mt-8 space-y-4">
+        <div className="flex gap-4 justify-center">
+            <button 
+                onClick={handleTest}
+                disabled={testStatus?.loading}
+                className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 transition bg-slate-100 px-3 py-2 rounded-lg"
+            >
+                <Activity size={16} />
+                {testStatus?.loading ? 'בודק...' : 'בדיקת חיבור (Ping)'}
+            </button>
+             <button 
+                onClick={() => setShowDebug(!showDebug)}
+                className="flex items-center gap-2 text-sm text-slate-500 hover:text-pink-600 transition bg-slate-100 px-3 py-2 rounded-lg"
+            >
+                <Database size={16} />
+                בדיקת נתונים מתקדמת
+            </button>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">מספר טלפון</label>
-          <input 
-            type="tel" 
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="050-0000000"
-            className="w-full p-4 rounded-xl border border-slate-200 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none transition-all bg-white/70 focus:bg-white text-lg tracking-wide shadow-sm"
-          />
-        </div>
-      </div>
-
-      <button
-        onClick={() => onLogin(phone)}
-        disabled={!isValid}
-        className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg disabled:opacity-50 hover:bg-slate-800 transition-colors"
-      >
-        כניסה לאזור אישי
-      </button>
-
-      {/* Connection Tester */}
-      <div className="pt-8 border-t border-slate-200 mt-8">
-        <button 
-            onClick={handleTest}
-            disabled={testStatus?.loading}
-            className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 transition mx-auto"
-        >
-            <Activity size={16} />
-            {testStatus?.loading ? 'מתחבר לשרת...' : 'בדיקת תקשורת לשרת (Google Sheets)'}
-        </button>
         {testStatus && !testStatus.loading && (
-            <p className={`text-center text-xs mt-2 font-bold ${testStatus.success ? 'text-green-600' : 'text-red-500'}`}>
+            <p className={`text-center text-xs font-bold ${testStatus.success ? 'text-green-600' : 'text-red-500'}`}>
                 {testStatus.msg}
             </p>
+        )}
+
+        {showDebug && (
+            <div className="bg-slate-900 text-slate-200 p-4 rounded-xl text-left text-xs font-mono overflow-x-auto shadow-inner" dir="ltr">
+                <div className="flex justify-between items-center mb-2 border-b border-slate-700 pb-2">
+                    <span className="font-bold flex items-center gap-2"><Terminal size={14}/> DEBUG CONSOLE</span>
+                    <button onClick={handleDebugFetch} className="bg-pink-600 text-white px-2 py-1 rounded hover:bg-pink-500">Fetch Raw Data</button>
+                </div>
+                
+                {debugData === "loading..." ? (
+                    <div className="text-yellow-400">Fetching data from Google Sheets...</div>
+                ) : debugData ? (
+                    <div>
+                        <div className="text-green-400 mb-2">// Raw Response (First 5 Rows):</div>
+                        {Array.isArray(debugData) ? (
+                            <div className="space-y-1">
+                                {debugData.slice(0, 5).map((row: any, i: number) => (
+                                    <div key={i} className={i === 2 ? "bg-slate-800 p-1 rounded border border-yellow-500/50" : ""}>
+                                        <span className="text-slate-500 mr-2">Row {i + 2} (Index {i}):</span>
+                                        <span className="text-cyan-300">[{Array.isArray(row) ? row.join(", ") : JSON.stringify(row)}]</span>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <pre>{JSON.stringify(debugData, null, 2)}</pre>
+                        )}
+                    </div>
+                ) : (
+                    <div className="text-slate-500 italic">Click 'Fetch Raw Data' to inspect sheet contents.</div>
+                )}
+            </div>
         )}
       </div>
     </div>
@@ -696,13 +1022,11 @@ function ManageLogin({ onLogin, onBack }: { onLogin: (phone: string) => void, on
 function ManageList({ phone, onBack }: { phone: string, onBack: () => void }) {
   const [bookings, setBookings] = useState<ClientBooking[]>([]);
   const [loading, setLoading] = useState(true);
-  const [canceling, setCanceling] = useState<string | null>(null); // holds date+time of booking being canceled
+  const [canceling, setCanceling] = useState<string | null>(null);
 
   const loadBookings = async () => {
     setLoading(true);
     const data = await api.fetchClientBookings(phone);
-    // Filter out past bookings if needed, or sort them
-    // Sorting by date
     const sorted = data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     setBookings(sorted);
     setLoading(false);
@@ -718,7 +1042,6 @@ function ManageList({ phone, onBack }: { phone: string, onBack: () => void }) {
     setCanceling(booking.date + booking.time);
     await api.cancelBooking(booking, phone);
     
-    // Refresh list after small delay
     setTimeout(() => {
        loadBookings();
        setCanceling(null);
@@ -880,7 +1203,7 @@ function ServiceSelection({ services, onSelect, onBack }: { services: Service[],
 function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTimeSelect, onNext, onBack, isValid }: any) {
   const dates = getNextWorkingDays(14);
   const [isLoading, setIsLoading] = useState(true);
-  const [connectionError, setConnectionError] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const [bookedSlots, setBookedSlots] = useState<Record<string, string[]>>({});
   const [retryCount, setRetryCount] = useState(0);
 
@@ -888,25 +1211,26 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
   useEffect(() => {
     const interval = setInterval(() => {
         setRetryCount(prev => prev + 1);
-    }, 10000); 
+    }, 5000); 
     return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
-    // Fetch data from API (or Mock) when component mounts
     let mounted = true;
     const loadData = async () => {
-      // Only show full loading spinner on first load, otherwise background refresh
+      // Only show full loading spinner on first load
       if (retryCount === 0) setIsLoading(true);
       
-      setConnectionError(false);
+      setConnectionError(null);
       const result = await api.fetchBookedSlots();
       if (mounted) {
         if (result.connected) {
           setBookedSlots(result.slots);
-          setConnectionError(false);
+          // DEBUG LOG to verify keys
+          console.log("Active Booked Slots Map:", result.slots);
+          setConnectionError(null);
         } else {
-          setConnectionError(true);
+          setConnectionError(result.error || "שגיאת תקשורת עם המערכת");
         }
         setIsLoading(false);
       }
@@ -933,9 +1257,12 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
         
         <div className="flex items-center gap-2">
             {!isLoading && !connectionError && (
-                 <span className="flex items-center gap-1 text-[10px] text-green-600 font-medium bg-green-50 px-2 py-1 rounded-full animate-pulse">
-                    <Zap size={10} fill="currentColor" />
-                    מסנכרן
+                 <span className="flex items-center gap-1.5 text-[10px] text-green-600 font-bold bg-green-50 px-3 py-1.5 rounded-full border border-green-100 shadow-sm">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                    </span>
+                    Live
                  </span>
             )}
             <button 
@@ -947,16 +1274,6 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
             </button>
         </div>
       </div>
-
-      {connectionError && (
-        <div className="bg-red-50/80 backdrop-blur-sm border border-red-200 rounded-xl p-4 flex gap-3 text-red-800 text-sm animate-pulse">
-          <WifiOff size={20} className="flex-shrink-0" />
-          <div>
-            <p className="font-bold">שגיאת תקשורת עם המערכת</p>
-            <p className="text-xs opacity-80 mt-1">לא ניתן למשוך נתונים מקובץ "Glow Studio - Sheet".</p>
-          </div>
-        </div>
-      )}
 
       <div className="space-y-2">
         <label className="text-sm font-medium text-slate-700">תאריך (א׳-ה׳)</label>
@@ -1002,30 +1319,36 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
                 onClick={() => {
                    onTimeSelect(slot.time, isBooked);
                 }}
-                className={`relative flex flex-col items-center justify-center p-3 rounded-xl border transition-all min-h-[70px] shadow-sm ${
+                className={`relative flex flex-col items-center justify-center p-3 rounded-xl border transition-all min-h-[70px] shadow-sm overflow-hidden ${
                     isSelected
                         ? isBooked
-                             ? 'bg-orange-50 border-orange-500 shadow-md scale-105 z-10'
+                             ? 'bg-orange-50 border-orange-400 ring-2 ring-orange-200 z-10'
                              : 'bg-slate-900 text-white border-slate-900 shadow-lg scale-105 z-10'
                         : isBooked
-                            ? 'bg-gray-200 border-gray-300 text-gray-400 cursor-pointer hover:bg-gray-300/50' 
+                            ? 'bg-slate-50 border-slate-200 text-slate-300 cursor-pointer hover:bg-slate-100' 
                             : 'bg-white text-slate-700 border-white hover:border-pink-300 hover:shadow-md'
                 }`}
                 >
-                <span className={`text-base font-bold ${isBooked ? 'line-through decoration-gray-400 decoration-2 opacity-60' : ''} ${isSelected && isBooked ? 'text-orange-700' : ''}`}>
+                <span className={`text-base font-bold relative z-10 ${isBooked ? 'line-through decoration-slate-300 decoration-2' : ''} ${isSelected && isBooked ? 'text-orange-700 decoration-orange-300' : ''}`}>
                   {slot.time}
                 </span>
                 
-                {isBooked && (
-                    <div className={`absolute -top-2 -left-2 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border border-white shadow-sm z-20 ${isSelected ? 'bg-orange-100 text-orange-700' : 'bg-gray-500 text-white'}`}>
-                      <Ban size={10} />
-                      תפוס
+                {isBooked && !isSelected && (
+                    <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
+                         <X size={48} className="text-slate-800" strokeWidth={1} />
                     </div>
                 )}
                 
                 {isBooked && (
-                   <span className={`text-[10px] font-medium mt-1 no-underline ${isSelected ? 'text-orange-600' : 'text-gray-500'}`}>
-                       {isSelected ? 'נבחר להמתנה' : 'להמתנה?'}
+                    <div className={`absolute -top-2 -left-2 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border border-white shadow-sm z-20 ${isSelected ? 'bg-orange-100 text-orange-700' : 'bg-slate-200 text-slate-500'}`}>
+                      {isSelected ? <Clock size={10} /> : <X size={10} />}
+                      {isSelected ? 'המתנה' : 'תפוס'}
+                    </div>
+                )}
+                
+                {isBooked && (
+                   <span className={`text-[10px] font-medium mt-1 no-underline relative z-10 ${isSelected ? 'text-orange-600' : 'text-slate-400'}`}>
+                       {isSelected ? 'להרשם להמתנה' : 'לחצי להמתנה'}
                    </span>
                 )}
                 </button>
@@ -1045,12 +1368,12 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
         )}
         
         {!isLoading && slots.length > 0 && (
-             <div className="mt-6 p-4 bg-pink-50/80 backdrop-blur-sm rounded-xl border border-pink-100 flex items-start gap-3 shadow-sm">
-                <Bell className="text-pink-500 flex-shrink-0 mt-1" size={16} />
+             <div className="mt-6 p-4 bg-slate-50 rounded-xl border border-slate-200 flex items-start gap-3">
+                <Info className="text-slate-400 flex-shrink-0 mt-1" size={16} />
                 <div>
-                    <h4 className="font-bold text-sm text-pink-800">השעה הרצויה תפוסה?</h4>
-                    <p className="text-xs text-pink-600 mt-1">
-                        ניתן לבחור שעה תפוסה ולהצטרף לרשימת ההמתנה.
+                    <h4 className="font-bold text-sm text-slate-700">מקרא זמינות</h4>
+                    <p className="text-xs text-slate-500 mt-1">
+                        שעות המסומנות ב-X הן שעות תפוסות. ניתן ללחוץ עליהן כדי להצטרף לרשימת ההמתנה.
                     </p>
                 </div>
             </div>
@@ -1059,7 +1382,7 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
 
       <button
         onClick={onNext}
-        disabled={!isValid || (isLoading && retryCount === 0) || connectionError}
+        disabled={!isValid || (isLoading && retryCount === 0)}
         className="w-full bg-pink-500 text-white py-4 rounded-xl font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-pink-600 transition-colors"
       >
         המשך לפרטים
@@ -1068,7 +1391,6 @@ function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTi
   );
 }
 
-// ... (Rest of components: ClientDetails, Confirmation, WaitingListConfirmation, AIConsultant, etc.) ...
 function ClientDetails({ name, phone, email, onChange, onNext, onBack, isWaitingList, isLoading }: any) {
   const cleanPhone = phone.replace(/\D/g, '');
   const isPhoneValid = cleanPhone.length === 10;
