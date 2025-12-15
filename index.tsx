@@ -156,10 +156,22 @@ const addMinutesStr = (timeStr: string, minutesToAdd: number): string => {
   return `${h}:${m}`;
 };
 
-// Aggressive time normalizer to handle "9:00", "09:00", "9:00:00", etc.
+// Aggressive time normalizer to handle "9:00", "09:00", "9:00:00", "1899-12-30T09:00..."
 const normalizeTime = (t: any): string | null => {
     if (!t) return null;
     let s = String(t).trim();
+    
+    // 1. Handle ISO/Date strings first (Timezone correction)
+    // Google Sheets JSON often returns times as full ISO strings (e.g. 1899-12-30T09:00:00.000Z)
+    // We must parse these as Dates to get the local time (e.g. 11:00 IL) instead of the UTC time (09:00).
+    if (s.includes('T') || s.match(/^\d{4}-/)) {
+        const d = new Date(s);
+        if (!isNaN(d.getTime())) {
+            return formatTime(d);
+        }
+    }
+
+    // 2. Fallback to Regex for simple HH:MM strings
     const match = s.match(/(\d{1,2}):(\d{2})/);
     if (match) {
         let h = match[1].padStart(2, '0');
