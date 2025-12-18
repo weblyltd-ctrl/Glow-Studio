@@ -64,7 +64,7 @@ export function ClientRegistry({ onBack }: { onBack: () => void }) {
                 <Info size={16} className="shrink-0" />
                 <div>
                     <span className="font-bold block mb-1">טיפ לפיתוח:</span>
-                    ניתן לבטל את חובת אישור המייל ב-Supabase תחת Settings > Authentication ולהוריד את ה-V מ-"Confirm email".
+                    ניתן לבטל את חובת אישור המייל ב-Supabase תחת Settings &gt; Authentication ולהוריד את ה-V מ-"Confirm email".
                 </div>
             </div>
 
