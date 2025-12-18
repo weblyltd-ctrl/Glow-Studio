@@ -6,7 +6,7 @@ import { supabase, api } from "./api";
 import { SERVICES } from "./constants";
 import { AppointmentState } from "./types";
 import { WelcomeScreen, ManageLogin, Register } from "./AuthComponents";
-import { HeroSection, ManageList, ClientRegistry } from "./DashboardComponents";
+import { HeroSection, ManageList, ClientRegistry, AdminAuth } from "./DashboardComponents";
 import { ServiceSelection, DateSelection, Confirmation, WaitingListConfirmation } from "./BookingComponents";
 import { AIConsultant } from "./AIConsultant";
 
@@ -28,49 +28,63 @@ function App() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
 
-  // פונקציה לסנכרון נתוני המשתמש מול מסד הנתונים
   const syncUserProfile = async (user: any) => {
-    if (!user) return;
-    
-    // קודם כל לוקחים מהמטא-דאטה (מהיר)
-    let name = user.user_metadata?.full_name || user.user_metadata?.name || "";
-    let phone = user.user_metadata?.phone || "";
-
-    // משיכת פרטים מטבלת ה-clients לווידוא שם מלא נכון (למשל עבור יניר)
-    const profile = await api.fetchUserProfile(user.id);
-    if (profile) {
-        name = profile.full_name || name;
-        phone = profile.phone || phone;
+    if (!user) {
+        setState(prev => ({ ...prev, currentUser: null, clientName: "", clientPhone: "", clientEmail: "" }));
+        return;
     }
+    
+    const profile = await api.fetchUserProfile(user.id);
+    
+    if (profile) {
+        const name = profile.full_name || user.user_metadata?.full_name || user.user_metadata?.name || "";
+        const phone = profile.phone || user.user_metadata?.phone || "";
 
-    setState(prev => ({ 
-        ...prev, 
-        currentUser: user,
-        clientEmail: user.email || "",
-        clientName: name,
-        clientPhone: phone,
-        // אם המשתמש מחובר, הוא לא צריך להיות במסכי הכניסה/הרשמה
-        step: ["welcome", "login", "register"].includes(prev.step) ? "home" : prev.step
-    }));
+        setState(prev => ({ 
+            ...prev, 
+            currentUser: user,
+            clientEmail: user.email || "",
+            clientName: name,
+            clientPhone: phone,
+            step: (["welcome", "login", "register", "admin-auth"].includes(prev.step) ? "home" : prev.step) as AppointmentState["step"]
+        }));
+    } else {
+        const metaName = user.user_metadata?.full_name || user.user_metadata?.name || "";
+        const metaPhone = user.user_metadata?.phone || "";
+        
+        if (metaName && metaPhone) {
+            await supabase.from('clients').upsert([{ id: user.id, full_name: metaName, phone: metaPhone, email: user.email }]);
+            setState(prev => ({ ...prev, currentUser: user, clientName: metaName, clientPhone: metaPhone, clientEmail: user.email, step: "home" }));
+        } else {
+            await api.logout();
+            setState(prev => ({ ...prev, currentUser: null, step: "welcome" }));
+        }
+    }
   };
 
   useEffect(() => {
-    // טעינת סשן ראשונית
-    // Fix: Using any cast to access auth methods due to type resolution issues in this environment
     (supabase.auth as any).getSession().then(({ data: { session } }: any) => {
         if (session?.user) {
-            syncUserProfile(session.user);
+            syncUserProfile(session.user).finally(() => setIsLoadingSession(false));
+        } else {
+            setIsLoadingSession(false);
         }
-        setIsLoadingSession(false);
     });
 
-    // האזנה לשינויי התחברות
-    // Fix: Using any cast to access auth methods due to type resolution issues in this environment
-    const { data: { subscription } } = (supabase.auth as any).onAuthStateChange((_event: any, session: any) => {
-         if (session?.user) {
-             syncUserProfile(session.user);
-         } else {
-             setState(prev => ({ ...prev, currentUser: null, step: "welcome", clientName: "", clientPhone: "", clientEmail: "" }));
+    const { data: { subscription } } = (supabase.auth as any).onAuthStateChange(async (event: string, session: any) => {
+         if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+             if (session?.user) {
+                 await syncUserProfile(session.user);
+             }
+         } else if (event === 'SIGNED_OUT') {
+             setState(prev => ({ 
+                 ...prev, 
+                 currentUser: null, 
+                 step: "welcome", 
+                 clientName: "", 
+                 clientPhone: "", 
+                 clientEmail: "" 
+             }));
          }
     });
 
@@ -80,7 +94,7 @@ function App() {
   const resetBookingFlow = () => {
     setState(prev => ({
       ...prev,
-      step: "home",
+      step: state.currentUser ? "home" : "welcome",
       service: null,
       date: null,
       time: null,
@@ -104,7 +118,7 @@ function App() {
       if (result.isDemo) setState(prev => ({ ...prev, isDemoMode: true }));
       nextStep(state.isWaitingList ? "waiting-list-confirmed" : "confirmation");
     } else {
-      setSubmissionError(result.message || "אירעה שגיאה בשמירת הנתונים.");
+      setSubmissionError(result.message || "אירעה שגיאה בשמירת הנתונים. וודאי שהרצת את ה-SQL ב-Supabase.");
     }
   };
 
@@ -137,15 +151,15 @@ function App() {
                          <span>יציאה</span>
                     </button>
                  )}
-                 {state.step !== "home" && (
-                    <button onClick={resetBookingFlow} className="text-sm text-slate-500 hover:text-slate-900 transition font-medium">ביטול</button>
+                 {state.step !== "home" && state.step !== "welcome" && (
+                    <button onClick={resetBookingFlow} className="text-sm text-slate-500 hover:text-slate-900 transition font-medium">חזרה</button>
                  )}
               </div>
             </div>
           </header>
       )}
       <main className="w-full max-w-lg mx-auto px-4 py-8">
-        {state.step === "welcome" && <WelcomeScreen onLogin={() => nextStep("login")} onRegister={() => nextStep("register")} />}
+        {state.step === "welcome" && <WelcomeScreen onLogin={() => nextStep("login")} onRegister={() => nextStep("register")} onAdminAccess={() => nextStep("admin-auth")} />}
         {state.step === "login" && (
           <ManageLogin 
             onLoginSuccess={() => nextStep("home")} 
@@ -156,8 +170,6 @@ function App() {
         {state.step === "register" && (
           <Register 
             onRegisterSuccess={() => {
-              // אם המערכת מוגדרת לאישור אוטומטי, syncUserProfile כבר יעביר ל-home.
-              // אם לא, נציג הודעה ונחזור להתחברות.
               if (!state.currentUser) {
                 alert("נרשמת בהצלחה! כעת תוכלי להתחבר."); 
                 nextStep("login"); 
@@ -167,7 +179,21 @@ function App() {
             onGoToLogin={() => nextStep("login")}
           />
         )}
-        {state.step === "home" && state.currentUser && <HeroSection userEmail={state.currentUser.email} userName={state.clientName} onStartBooking={() => nextStep("services")} onManageBookings={() => nextStep("manage-list")} />}
+        {state.step === "home" && state.currentUser && (
+            <HeroSection 
+                userEmail={state.currentUser.email} 
+                userName={state.clientName} 
+                onStartBooking={() => nextStep("services")} 
+                onManageBookings={() => nextStep("manage-list")} 
+                onAdminAccess={() => nextStep("admin-auth")}
+            />
+        )}
+        {state.step === "admin-auth" && (
+            <AdminAuth 
+                onSuccess={() => nextStep("client-registry")} 
+                onBack={() => nextStep(state.currentUser ? "home" : "welcome")} 
+            />
+        )}
         {state.step === "services" && <ServiceSelection services={SERVICES} onSelect={(service) => { setState(prev => ({ ...prev, service })); nextStep("date"); }} onBack={() => nextStep("home")} />}
         {state.step === "date" && (
           <DateSelection 
@@ -186,7 +212,7 @@ function App() {
         {state.step === "confirmation" && <Confirmation state={state} onReset={resetBookingFlow} />}
         {state.step === "waiting-list-confirmed" && <WaitingListConfirmation state={state} onReset={resetBookingFlow} />}
         {state.step === "manage-list" && state.currentUser && <ManageList userId={state.currentUser.id} onBack={() => nextStep("home")} />}
-        {state.step === "client-registry" && <ClientRegistry onBack={() => nextStep("home")} />}
+        {state.step === "client-registry" && <ClientRegistry onBack={() => nextStep(state.currentUser ? "home" : "welcome")} />}
       </main>
       {state.currentUser && !["welcome", "login", "register", "confirmation", "waiting-list-confirmed"].includes(state.step) && (
         <div className="fixed bottom-6 left-6 z-50">

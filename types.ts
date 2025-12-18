@@ -12,7 +12,7 @@ export type Service = {
 };
 
 export type AppointmentState = {
-  step: "welcome" | "login" | "register" | "home" | "services" | "date" | "confirmation" | "waiting-list-confirmed" | "manage-list" | "client-registry";
+  step: "welcome" | "login" | "register" | "home" | "services" | "date" | "confirmation" | "waiting-list-confirmed" | "manage-list" | "client-registry" | "admin-auth";
   service: Service | null;
   date: Date | null;
   time: string | null;

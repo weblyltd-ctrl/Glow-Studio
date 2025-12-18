@@ -1,7 +1,11 @@
+
 import { Service } from "./types";
 
-export const SUPABASE_URL = process.env.SUPABASE_URL || "https://hhqzjgmghwkcetzcvtth.supabase.co";
-export const SUPABASE_ANON_KEY = process.env.SUPABASE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhocXpqZ21naHdrY2V0emN2dHRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4OTc3MjMsImV4cCI6MjA4MTQ3MzcyM30.FjjT1SBR6WJtYC742KXMjazgQnhkqljHLMQJsQJDC00";
+// הפרטים של הפרויקט שלך ב-Supabase
+export const SUPABASE_URL = process.env.SUPABASE_URL || "https://gkdhgxpjkhucdanougua.supabase.co";
+// שים לב: המפתח שסופק (sb_publishable_...) נראה כמו מפתח Stripe. 
+// אם החיבור נכשל, יש להחליף אותו ב-Anon Key מה-Supabase Dashboard (מתחיל ב-eyJ)
+export const SUPABASE_ANON_KEY = process.env.SUPABASE_KEY || "sb_publishable_aPKU7C8-IsokIsuH0szcUQ_ZM6i5vuR";
 
 export const BUSINESS_INFO = {
   name: "Glow Studio",
