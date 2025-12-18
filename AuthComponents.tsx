@@ -27,7 +27,7 @@ export function WelcomeScreen({ onLogin, onRegister }: { onLogin: () => void, on
     );
 }
 
-export function ManageLogin({ onLoginSuccess, onBack }: { onLoginSuccess: () => void, onBack: () => void }) {
+export function ManageLogin({ onLoginSuccess, onBack, onGoToRegister }: { onLoginSuccess: () => void, onBack: () => void, onGoToRegister: () => void }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -70,24 +70,27 @@ export function ManageLogin({ onLoginSuccess, onBack }: { onLoginSuccess: () => 
             <form onSubmit={handleSubmit} className="space-y-4">
                  <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">אימייל</label>
-                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full p-4 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black transition" />
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full p-4 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black transition" placeholder="example@mail.com" />
                 </div>
                 <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">סיסמה</label>
-                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full p-4 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black transition" />
+                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full p-4 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black transition" placeholder="******" />
                 </div>
 
                 {error && (
                     <div className={`p-4 rounded-xl text-sm flex flex-col gap-2 ${error.code === 'EMAIL_NOT_CONFIRMED' ? 'bg-orange-50 text-orange-800 border border-orange-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>
                         <div className="flex items-start gap-2">
                              <AlertCircle size={18} className="shrink-0 mt-0.5" />
-                             <span>{error.message}</span>
+                             <span className="font-medium">{error.message}</span>
                         </div>
                         {error.code === 'EMAIL_NOT_CONFIRMED' && (
                             <button type="button" onClick={handleResend} disabled={resending} className="text-xs font-bold underline text-right hover:text-orange-900 transition flex items-center gap-1">
                                 {resending ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                                 <span>שלחי לי שוב מייל אימות</span>
                             </button>
+                        )}
+                        {error.code === 'INVALID_CREDENTIALS' && (
+                            <p className="text-xs opacity-80">במידה וטרם נרשמת, תוכלי לעשות זאת בלחיצה על "הרשמה" למטה.</p>
                         )}
                     </div>
                 )}
@@ -102,12 +105,18 @@ export function ManageLogin({ onLoginSuccess, onBack }: { onLoginSuccess: () => 
                 <button type="submit" disabled={loading} className="w-full bg-black text-white py-4 rounded-full font-bold disabled:opacity-50 shadow-lg hover:shadow-xl transition-all flex items-center justify-center">
                     {loading ? <Loader2 className="animate-spin" /> : 'כניסה'}
                 </button>
+
+                <div className="text-center pt-2">
+                    <button type="button" onClick={onGoToRegister} className="text-sm text-slate-500 hover:text-black transition">
+                        עדיין אין לך חשבון? <span className="font-bold underline">להרשמה מהירה</span>
+                    </button>
+                </div>
             </form>
         </div>
     );
 }
 
-export function Register({ onRegisterSuccess, onBack }: { onRegisterSuccess: () => void, onBack: () => void }) {
+export function Register({ onRegisterSuccess, onBack, onGoToLogin }: { onRegisterSuccess: () => void, onBack: () => void, onGoToLogin: () => void }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [fullName, setFullName] = useState('');
@@ -167,6 +176,12 @@ export function Register({ onRegisterSuccess, onBack }: { onRegisterSuccess: () 
                 <button type="submit" disabled={loading} className="w-full bg-black text-white py-4 rounded-full font-bold disabled:opacity-50 shadow-lg hover:shadow-xl transition-all flex items-center justify-center">
                     {loading ? <Loader2 className="animate-spin" /> : 'סיום הרשמה'}
                 </button>
+
+                <div className="text-center pt-2">
+                    <button type="button" onClick={onGoToLogin} className="text-sm text-slate-500 hover:text-black transition">
+                        כבר יש לך חשבון? <span className="font-bold underline">להתחברות</span>
+                    </button>
+                </div>
             </form>
         </div>
     );

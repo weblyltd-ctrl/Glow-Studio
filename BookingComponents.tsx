@@ -28,7 +28,7 @@ export function ServiceSelection({ services, onSelect, onBack }: { services: Ser
     );
 }
 
-export function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTimeSelect, onNext, onBack, isValid }: any) {
+export function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTimeSelect, onNext, onBack, isValid, isLoading, error }: any) {
     const [slots, setSlots] = useState<{ time: string; available: boolean; waitingCount: number }[]>([]);
     const [loadingSlots, setLoadingSlots] = useState(false);
     const dates = Array.from({ length: 14 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i); return d; }).filter(d => isWorkingDay(d));
@@ -70,23 +70,18 @@ export function DateSelection({ service, selectedDate, selectedTime, onDateSelec
                         ))}
                     </div>}
             </div>
-            <div className="sticky bottom-0 bg-[#FAFAFA] pt-4 border-t border-slate-100"><button disabled={!isValid} onClick={onNext} className="w-full bg-black text-white py-4 rounded-full font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transition-all">המשך</button></div>
-        </div>
-    );
-}
+            
+            {error && <div className="text-red-500 text-sm bg-red-50 p-3 rounded-lg border border-red-100 mb-2">{error}</div>}
 
-export function ClientDetails({ name, phone, email, isWaitingList, isLoading, error, onChange, onNext, onBack }: any) {
-    return (
-        <div className="space-y-6 animate-slide-up">
-            <div className="flex items-center gap-2"><button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition"><ChevronRight size={24} /></button><h2 className="text-2xl font-bold">פרטים אישיים</h2></div>
-            {isWaitingList && <div className="bg-yellow-50 text-yellow-800 p-4 rounded-xl flex items-start gap-3 text-sm"><Clock className="shrink-0 mt-0.5" size={16} /><div><span className="font-bold block mb-1">רשימת המתנה</span>התור שבחרת תפוס. אם תמשיכי, ניכנס לרשימת המתנה.</div></div>}
-            <div className="space-y-4">
-                <div><label className="block text-sm font-medium text-slate-700 mb-1">שם מלא</label><input type="text" value={name} onChange={(e) => onChange('clientName', e.target.value)} className="w-full p-4 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black transition" placeholder="ישראל ישראלי" /></div>
-                <div><label className="block text-sm font-medium text-slate-700 mb-1">טלפון</label><input type="tel" value={phone} onChange={(e) => onChange('clientPhone', e.target.value)} className="w-full p-4 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black transition" placeholder="050-0000000" /></div>
-                <div><label className="block text-sm font-medium text-slate-700 mb-1">אימייל</label><input type="email" value={email} readOnly className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-slate-500 cursor-not-allowed" /></div>
+            <div className="sticky bottom-0 bg-[#FAFAFA] pt-4 border-t border-slate-100">
+                <button 
+                    disabled={!isValid || isLoading} 
+                    onClick={onNext} 
+                    className="w-full bg-black text-white py-4 rounded-full font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
+                >
+                    {isLoading ? <Loader2 className="animate-spin" /> : 'אישור תור'}
+                </button>
             </div>
-            {error && <div className="text-red-500 text-sm bg-red-50 p-3 rounded-lg border border-red-100">{error}</div>}
-            <button onClick={onNext} disabled={!name || !phone || !email || isLoading} className="w-full bg-black text-white py-4 rounded-full font-bold disabled:opacity-50 shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2">{isLoading ? <Loader2 className="animate-spin" /> : (isWaitingList ? 'הרשמה להמתנה' : 'אישור תור')}</button>
         </div>
     );
 }

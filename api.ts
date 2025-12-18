@@ -18,14 +18,16 @@ export const api = {
       
       data?.forEach((row: any) => {
           const dateKey = row.date;
-          const time = row.time;
+          // פיצול הזמן למקרה שהוא נשמר כטווח (HH:MM-HH:MM) או רק שעת התחלה
+          const timeRange = row.time;
+          const startTime = timeRange.includes('-') ? timeRange.split('-')[0] : timeRange;
           
           if (!normalizedData[dateKey]) {
               normalizedData[dateKey] = [];
           }
           
-          if (!normalizedData[dateKey].includes(time)) {
-              normalizedData[dateKey].push(time);
+          if (!normalizedData[dateKey].includes(startTime)) {
+              normalizedData[dateKey].push(startTime);
           }
 
           let duration = 30;
@@ -35,7 +37,7 @@ export const api = {
 
           const slotsToBlock = Math.ceil(duration / 30);
           for (let i = 1; i < slotsToBlock; i++) {
-                const nextSlot = addMinutesStr(time, i * 30);
+                const nextSlot = addMinutesStr(startTime, i * 30);
                 if (!normalizedData[dateKey].includes(nextSlot)) {
                     normalizedData[dateKey].push(nextSlot);
                 }
@@ -193,9 +195,16 @@ export const api = {
   saveBooking: async (bookingData: any): Promise<{ success: boolean; message?: string; isDemo?: boolean }> => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      
+      // חישוב שעת סיום התור לפי משך השירות
+      const startTime = bookingData.time;
+      const duration = bookingData.service?.duration || 30;
+      const endTime = addMinutesStr(startTime, duration);
+      const timeRange = `${startTime}-${endTime}`;
+
       const payload: any = {
         date: getDateKey(new Date(bookingData.date)), 
-        time: bookingData.time,
+        time: timeRange, // שמירה בפורמט HH:MM-HH:MM
         service: bookingData.service.name,
         client_name: bookingData.clientName,
         client_phone: bookingData.clientPhone,

@@ -6,7 +6,7 @@ import { SERVICES } from "./constants";
 import { AppointmentState } from "./types";
 import { WelcomeScreen, ManageLogin, Register } from "./AuthComponents";
 import { HeroSection, ManageList, ClientRegistry } from "./DashboardComponents";
-import { ServiceSelection, DateSelection, ClientDetails, Confirmation, WaitingListConfirmation } from "./BookingComponents";
+import { ServiceSelection, DateSelection, Confirmation, WaitingListConfirmation } from "./BookingComponents";
 import { AIConsultant } from "./AIConsultant";
 
 function App() {
@@ -35,7 +35,7 @@ function App() {
     let name = user.user_metadata?.full_name || user.user_metadata?.name || "";
     let phone = user.user_metadata?.phone || "";
 
-    // אם חסר שם, או ליתר ביטחון - מושכים מהטבלה 'clients' כפי שביקשת
+    // משיכת פרטים מטבלת ה-clients לווידוא שם מלא נכון (למשל עבור יניר)
     const profile = await api.fetchUserProfile(user.id);
     if (profile) {
         name = profile.full_name || name;
@@ -48,6 +48,7 @@ function App() {
         clientEmail: user.email || "",
         clientName: name,
         clientPhone: phone,
+        // אם המשתמש מחובר, הוא לא צריך להיות במסכי הכניסה/הרשמה
         step: ["welcome", "login", "register"].includes(prev.step) ? "home" : prev.step
     }));
   };
@@ -91,7 +92,7 @@ function App() {
     setState(prev => ({ ...prev, step: next }));
   };
 
-  const handleDetailsSubmit = async () => {
+  const handleBookingSubmit = async () => {
     setIsSubmitting(true);
     setSubmissionError(null);
     const result = await api.saveBooking(state);
@@ -142,12 +143,43 @@ function App() {
       )}
       <main className="w-full max-w-lg mx-auto px-4 py-8">
         {state.step === "welcome" && <WelcomeScreen onLogin={() => nextStep("login")} onRegister={() => nextStep("register")} />}
-        {state.step === "login" && <ManageLogin onLoginSuccess={() => nextStep("home")} onBack={() => nextStep("welcome")} />}
-        {state.step === "register" && <Register onRegisterSuccess={() => { alert("נרשמת בהצלחה! כעת תוכלי להתחבר."); nextStep("login"); }} onBack={() => nextStep("welcome")} />}
+        {state.step === "login" && (
+          <ManageLogin 
+            onLoginSuccess={() => nextStep("home")} 
+            onBack={() => nextStep("welcome")}
+            onGoToRegister={() => nextStep("register")}
+          />
+        )}
+        {state.step === "register" && (
+          <Register 
+            onRegisterSuccess={() => {
+              // אם המערכת מוגדרת לאישור אוטומטי, syncUserProfile כבר יעביר ל-home.
+              // אם לא, נציג הודעה ונחזור להתחברות.
+              if (!state.currentUser) {
+                alert("נרשמת בהצלחה! כעת תוכלי להתחבר."); 
+                nextStep("login"); 
+              }
+            }} 
+            onBack={() => nextStep("welcome")}
+            onGoToLogin={() => nextStep("login")}
+          />
+        )}
         {state.step === "home" && state.currentUser && <HeroSection userEmail={state.currentUser.email} userName={state.clientName} onStartBooking={() => nextStep("services")} onManageBookings={() => nextStep("manage-list")} />}
         {state.step === "services" && <ServiceSelection services={SERVICES} onSelect={(service) => { setState(prev => ({ ...prev, service })); nextStep("date"); }} onBack={() => nextStep("home")} />}
-        {state.step === "date" && <DateSelection service={state.service} selectedDate={state.date} selectedTime={state.time} onDateSelect={(d: Date) => setState(prev => ({ ...prev, date: d, time: null, isWaitingList: false, isDemoMode: false }))} onTimeSelect={(t: string, isWaitingList: boolean) => setState(prev => ({ ...prev, time: t, isWaitingList }))} onNext={() => nextStep("details")} onBack={() => nextStep("services")} isValid={!!state.date && !!state.time} />}
-        {state.step === "details" && <ClientDetails name={state.clientName} phone={state.clientPhone} email={state.clientEmail} isWaitingList={state.isWaitingList} isLoading={isSubmitting} error={submissionError} onChange={(field: string, val: string) => setState(prev => ({ ...prev, [field]: val }))} onNext={handleDetailsSubmit} onBack={() => nextStep("date")} />}
+        {state.step === "date" && (
+          <DateSelection 
+            service={state.service} 
+            selectedDate={state.date} 
+            selectedTime={state.time} 
+            onDateSelect={(d: Date) => setState(prev => ({ ...prev, date: d, time: null, isWaitingList: false, isDemoMode: false }))} 
+            onTimeSelect={(t: string, isWaitingList: boolean) => setState(prev => ({ ...prev, time: t, isWaitingList }))} 
+            onNext={handleBookingSubmit} 
+            onBack={() => nextStep("services")} 
+            isValid={!!state.date && !!state.time}
+            isLoading={isSubmitting}
+            error={submissionError}
+          />
+        )}
         {state.step === "confirmation" && <Confirmation state={state} onReset={resetBookingFlow} />}
         {state.step === "waiting-list-confirmed" && <WaitingListConfirmation state={state} onReset={resetBookingFlow} />}
         {state.step === "manage-list" && state.currentUser && <ManageList userId={state.currentUser.id} onBack={() => nextStep("home")} />}
