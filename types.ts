@@ -23,11 +23,13 @@ export type AppointmentState = {
 };
 
 export type ClientBooking = {
-  id?: number;
+  id: number | string;
   date: string;
   time: string;
   service: string;
-  name: string;
+  client_name: string;
+  client_phone?: string;
+  client_email?: string;
 };
 
 export type ClientProfile = {

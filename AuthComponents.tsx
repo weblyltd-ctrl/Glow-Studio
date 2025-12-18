@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { LogIn, UserPlus, ChevronRight, AlertCircle, RefreshCw, Loader2, Check, User, Phone } from "lucide-react";
 import { api } from "./api";
 
@@ -30,10 +30,19 @@ export function WelcomeScreen({ onLogin, onRegister }: { onLogin: () => void, on
 export function ManageLogin({ onLoginSuccess, onBack, onGoToRegister }: { onLoginSuccess: () => void, onBack: () => void, onGoToRegister: () => void }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [rememberMe, setRememberMe] = useState(false);
     const [loading, setLoading] = useState(false);
     const [resending, setResending] = useState(false);
     const [error, setError] = useState<{message: string, code?: string} | null>(null);
     const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+    useEffect(() => {
+        const savedEmail = localStorage.getItem('rememberedEmail');
+        if (savedEmail) {
+            setEmail(savedEmail);
+            setRememberMe(true);
+        }
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -43,6 +52,11 @@ export function ManageLogin({ onLoginSuccess, onBack, onGoToRegister }: { onLogi
         const res = await api.loginUser(email, password);
         setLoading(false);
         if (res.success) {
+            if (rememberMe) {
+                localStorage.setItem('rememberedEmail', email);
+            } else {
+                localStorage.removeItem('rememberedEmail');
+            }
             onLoginSuccess();
         } else {
             setError({ message: res.message || "שגיאה בכניסה", code: res.code });
@@ -75,6 +89,17 @@ export function ManageLogin({ onLoginSuccess, onBack, onGoToRegister }: { onLogi
                 <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">סיסמה</label>
                     <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full p-4 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black transition" placeholder="******" />
+                </div>
+
+                <div className="flex items-center gap-2 px-1">
+                    <input 
+                        type="checkbox" 
+                        id="rememberMe" 
+                        checked={rememberMe} 
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="w-4 h-4 accent-black"
+                    />
+                    <label htmlFor="rememberMe" className="text-sm text-slate-600 cursor-pointer select-none">זכור אותי</label>
                 </div>
 
                 {error && (
@@ -126,9 +151,17 @@ export function Register({ onRegisterSuccess, onBack, onGoToLogin }: { onRegiste
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        
+        // וולידציה למספר טלפון - בדיוק 10 ספרות
+        const phoneDigits = phone.replace(/\D/g, '');
+        if (phoneDigits.length !== 10) {
+            setError("מספר טלפון חייב להכיל בדיוק 10 ספרות.");
+            return;
+        }
+
         setLoading(true);
         setError(null);
-        const res = await api.registerUser(email, password, fullName, phone);
+        const res = await api.registerUser(email, password, fullName, phoneDigits);
         setLoading(false);
         if (res.success) {
             if (res.requiresConfirmation) {
@@ -160,8 +193,9 @@ export function Register({ onRegisterSuccess, onBack, onGoToLogin }: { onRegiste
                     <label className="block text-sm font-medium text-slate-700 mb-1">טלפון</label>
                     <div className="relative">
                         <Phone className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                        <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required className="w-full p-4 pr-12 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black transition" placeholder="050-1234567" />
+                        <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required className="w-full p-4 pr-12 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black transition" placeholder="0501234567" maxLength={10} />
                     </div>
+                    <p className="text-[10px] text-slate-400 mt-1 px-1">נא להזין 10 ספרות בדיוק (לדוגמה: 0501234567)</p>
                 </div>
                  <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">אימייל</label>

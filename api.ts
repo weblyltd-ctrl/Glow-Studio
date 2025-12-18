@@ -18,7 +18,6 @@ export const api = {
       
       data?.forEach((row: any) => {
           const dateKey = row.date;
-          // פיצול הזמן למקרה שהוא נשמר כטווח (HH:MM-HH:MM) או רק שעת התחלה
           const timeRange = row.time;
           const startTime = timeRange.includes('-') ? timeRange.split('-')[0] : timeRange;
           
@@ -196,7 +195,6 @@ export const api = {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
-      // חישוב שעת סיום התור לפי משך השירות
       const startTime = bookingData.time;
       const duration = bookingData.service?.duration || 30;
       const endTime = addMinutesStr(startTime, duration);
@@ -204,7 +202,7 @@ export const api = {
 
       const payload: any = {
         date: getDateKey(new Date(bookingData.date)), 
-        time: timeRange, // שמירה בפורמט HH:MM-HH:MM
+        time: timeRange,
         service: bookingData.service.name,
         client_name: bookingData.clientName,
         client_phone: bookingData.clientPhone,
@@ -228,18 +226,19 @@ export const api = {
     }
   },
 
-  cancelBooking: async (bookingId: number) => {
+  cancelBooking: async (bookingId: number | string): Promise<{ success: boolean; error?: any }> => {
     try {
+      // וידוא שהמזהה נשלח כראוי
       const { error } = await supabase
         .from('appointments')
         .delete()
-        .eq('id', bookingId);
+        .match({ id: bookingId });
 
       if (error) throw error;
       return { success: true };
-    } catch (error) {
-      console.error("Error canceling booking:", error);
-      return { success: false };
+    } catch (error: any) {
+      console.error("API Error - cancelBooking:", error);
+      return { success: false, error };
     }
   },
 
