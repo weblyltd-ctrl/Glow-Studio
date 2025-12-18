@@ -195,6 +195,10 @@ export const api = {
     try {
       const { data: { user } } = await (supabase.auth as any).getUser();
       
+      if (!user) {
+        return { success: false, message: "יש להיות מחוברת כדי לקבוע תור." };
+      }
+
       const startTime = bookingData.time;
       const duration = bookingData.service?.duration || 30;
       const endTime = addMinutesStr(startTime, duration);
@@ -207,13 +211,13 @@ export const api = {
         client_name: bookingData.clientName,
         client_phone: bookingData.clientPhone,
         client_email: bookingData.clientEmail,
+        user_id: user.id // חובה עבור ה-Policy
       };
-
-      if (user) payload.user_id = user.id;
 
       const { error } = await supabase.from('appointments').insert([payload]);
       
       if (error) {
+          console.error("Supabase insert error:", error);
           if (error.code === '42501' || error.message.toLowerCase().includes('policy')) {
               return { success: true, isDemo: true }; 
           }
@@ -228,18 +232,28 @@ export const api = {
 
   cancelBooking: async (bookingId: number | string): Promise<{ success: boolean; error?: any }> => {
     try {
-      console.log("Canceling appointment from DB:", bookingId);
-      // שימוש ב-eq כדי להבטיח מחיקה של השורה הספציפית
-      const { error } = await supabase
+      const { data: { user } } = await (supabase.auth as any).getUser();
+      
+      if (!user) throw new Error("יש להיות מחוברת כדי לבצע פעולה זו.");
+
+      // אנחנו מוסיפים eq('user_id', user.id) כביטחון נוסף בקוד, למרות שה-RLS אמור לאכוף זאת
+      const { data, error } = await supabase
         .from('appointments')
         .delete()
-        .eq('id', bookingId);
+        .eq('id', bookingId)
+        .eq('user_id', user.id)
+        .select();
 
       if (error) throw error;
+      
+      if (!data || data.length === 0) {
+        throw new Error("לא ניתן למחוק את התור. וודאי שאת מחוברת לחשבון הנכון ושהגדרת את ה-Policies ב-Supabase.");
+      }
+
       return { success: true };
     } catch (error: any) {
       console.error("Error in cancelBooking API:", error);
-      return { success: false, error };
+      return { success: false, error: error.message };
     }
   },
 

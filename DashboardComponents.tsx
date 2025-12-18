@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from "react";
-import { ChevronLeft, ChevronRight, List, Users, Calendar, Clock, Trash2, Loader2, Info, Database, EyeOff, Eye, MessageSquare, ShieldCheck } from "lucide-react";
+import { ChevronLeft, ChevronRight, List, Users, Calendar, Clock, Trash2, Loader2, Info, Database, EyeOff, Eye, MessageSquare, ShieldCheck, AlertCircle, Terminal } from "lucide-react";
 import { api } from "./api";
 import { ClientBooking, ClientProfile } from "./types";
 import { BUSINESS_INFO } from "./constants";
@@ -40,14 +39,17 @@ export function ManageList({ userId, onBack }: { userId: string, onBack: () => v
     const [bookings, setBookings] = useState<ClientBooking[]>([]);
     const [loading, setLoading] = useState(true);
     const [cancellingId, setCancellingId] = useState<number | string | null>(null);
+    const [error, setError] = useState<string | null>(null);
 
     const load = async () => { 
         setLoading(true); 
+        setError(null);
         try {
             const data = await api.fetchClientBookings(userId);
             setBookings(data); 
         } catch (e) {
             console.error("Error loading bookings:", e);
+            setError("חלה שגיאה בטעינת התורים.");
         } finally {
             setLoading(false); 
         }
@@ -59,27 +61,24 @@ export function ManageList({ userId, onBack }: { userId: string, onBack: () => v
         e.preventDefault();
         e.stopPropagation();
 
-        if (!booking.id) {
-            console.error("No ID found for booking");
-            return;
-        }
+        if (!booking.id) return;
         
         const isConfirmed = window.confirm(`האם את בטוחה שברצונך לבטל את התור ל${booking.service}?`);
         
         if (isConfirmed) { 
             setCancellingId(booking.id);
+            setError(null);
             try {
                 const res = await api.cancelBooking(booking.id); 
                 
                 if (res.success) {
-                    // הסרה מיידית של השורה מהממשק להרגשת מהירות
                     setBookings(prev => prev.filter(b => String(b.id) !== String(booking.id)));
                 } else {
-                    alert("המחיקה נכשלה בשרת. וודאי שהגדרת את פוליסי ה-DELETE ב-Supabase.");
+                    setError(res.error || "המחיקה נכשלה. בדקי את ה-Policies ב-Supabase.");
                 }
-            } catch (err) {
-                console.error("Unexpected error during delete process:", err);
-                alert("אירעה שגיאה בלתי צפויה.");
+            } catch (err: any) {
+                console.error("Unexpected error during delete:", err);
+                setError("אירעה שגיאה בתהליך המחיקה.");
             } finally {
                 setCancellingId(null);
             }
@@ -92,6 +91,18 @@ export function ManageList({ userId, onBack }: { userId: string, onBack: () => v
                 <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition"><ChevronRight size={24} /></button>
                 <h2 className="text-2xl font-bold">התורים שלי</h2>
             </div>
+
+            {error && (
+                <div className="bg-red-50 border border-red-100 text-red-700 p-4 rounded-xl text-sm flex flex-col gap-2 animate-fade-in">
+                    <div className="flex items-center gap-3">
+                        <AlertCircle size={18} className="shrink-0" />
+                        <span className="font-bold">שגיאת אבטחה בשרת:</span>
+                    </div>
+                    <p className="text-xs mr-8 opacity-80">{error}</p>
+                    <p className="text-[10px] mr-8 font-medium">עבור למסך הניהול כדי להעתיק את הקוד לתיקון מסד הנתונים.</p>
+                </div>
+            )}
+
             {loading && bookings.length === 0 ? (
                 <div className="flex justify-center p-10"><Loader2 className="animate-spin text-slate-400" size={32} /></div>
             ) : bookings.length === 0 ? (
@@ -121,8 +132,7 @@ export function ManageList({ userId, onBack }: { userId: string, onBack: () => v
                                 type="button"
                                 onClick={(e) => handleCancel(e, b)} 
                                 disabled={cancellingId === b.id}
-                                title="מחיקת תור"
-                                className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-2.5 rounded-full transition-all cursor-pointer active:scale-90 disabled:opacity-50"
+                                className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-2.5 rounded-full transition-all cursor-pointer active:scale-95 disabled:opacity-50"
                             >
                                 {cancellingId === b.id ? (
                                     <Loader2 className="animate-spin text-red-500" size={20} />
@@ -162,53 +172,61 @@ export function ClientRegistry({ onBack }: { onBack: () => void }) {
                     <h2 className="text-2xl font-bold">ניהול מערכת</h2>
                 </div>
                 <button onClick={() => setShowSql(!showSql)} className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full hover:bg-slate-200 transition flex items-center gap-1">
-                    <Database size={12} />
-                    <span>{showSql ? 'הסתר הגדרות' : 'הגדרת מסד נתונים'}</span>
+                    <Terminal size={12} />
+                    <span>{showSql ? 'הסתר פתרון' : 'תיקון מסד נתונים'}</span>
                 </button>
             </div>
             
-            <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl text-xs text-indigo-800 flex items-start gap-3">
-                <ShieldCheck size={20} className="shrink-0 text-indigo-500" />
+            <div className="bg-red-50 border border-red-100 p-4 rounded-xl text-xs text-red-800 flex items-start gap-3">
+                <AlertCircle size={20} className="shrink-0 text-red-500" />
                 <div>
-                    <span className="font-bold block mb-1 text-sm">הגדרות אבטחה (RLS)</span>
-                    כדי שלקוחות יוכלו להוסיף ולמחוק תורים בביטחון, עליך להריץ את פקודות ה-SQL ב-Supabase Dashboard.
+                    <span className="font-bold block mb-1 text-sm">זיהינו בלאגן ב-Policies!</span>
+                    לפי צילום המסך שלך, יש לך יותר מדי חוקים כפולים שמונעים מחיקה. עליך למחוק את כולם ולהגדיר מחדש בצורה נקייה.
                 </div>
             </div>
 
             {showSql && (
                 <div className="bg-slate-900 text-slate-300 p-5 rounded-xl text-left text-[11px] font-mono relative overflow-hidden space-y-4 shadow-2xl">
-                    <div className="border-l-2 border-emerald-500 pl-3 py-1">
-                        <p className="text-emerald-400 font-bold mb-2">-- פקודות חובה להוספה ומחיקה --</p>
+                    <div className="border-l-2 border-orange-500 pl-3 py-1">
+                        <p className="text-orange-400 font-bold mb-2">-- שלב 1: ניקוי כל החוקים הקיימים (להריץ ב-SQL Editor) --</p>
+                        <pre className="whitespace-pre-wrap text-slate-400 leading-relaxed mb-4">
+DROP POLICY IF EXISTS "Enable delete for users based on user_id" ON public.appointments;
+DROP POLICY IF EXISTS "Enable insert for everyone" ON public.appointments;
+DROP POLICY IF EXISTS "Enable insert for users based on user_id" ON public.appointments;
+DROP POLICY IF EXISTS "Enable public insert" ON public.appointments;
+DROP POLICY IF EXISTS "Enable read access for all users" ON public.appointments;
+DROP POLICY IF EXISTS "Users can delete own appointments" ON public.appointments;
+DROP POLICY IF EXISTS "Users can insert own appointments" ON public.appointments;
+DROP POLICY IF EXISTS "Users can view own appointments" ON public.appointments;
+                        </pre>
+                        
+                        <p className="text-emerald-400 font-bold mb-2">-- שלב 2: הגדרה מחדש ונקייה --</p>
                         <pre className="whitespace-pre-wrap text-emerald-100 leading-relaxed">
--- 1. הפעלת אבטחה על הטבלה
+-- הפעלת אבטחה
 ALTER TABLE public.appointments ENABLE ROW LEVEL SECURITY;
 
--- 2. פוליסי להוספת תור (INSERT)
-CREATE POLICY "Users can insert own appointments" ON public.appointments
-FOR INSERT WITH CHECK (auth.uid() = user_id);
+-- 1. צפייה בתורים (רק של עצמך)
+CREATE POLICY "appointments_select_policy" ON public.appointments
+FOR SELECT TO authenticated USING (auth.uid() = user_id);
 
--- 3. פוליסי למחיקת תור (DELETE)
-CREATE POLICY "Users can delete own appointments" ON public.appointments
-FOR DELETE USING (auth.uid() = user_id);
+-- 2. הוספת תור (רק עבור עצמך)
+CREATE POLICY "appointments_insert_policy" ON public.appointments
+FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 
--- 4. פוליסי לצפייה (SELECT)
-CREATE POLICY "Users can view own appointments" ON public.appointments
-FOR SELECT USING (auth.uid() = user_id);
+-- 3. מחיקת תור (רק שלך)
+CREATE POLICY "appointments_delete_policy" ON public.appointments
+FOR DELETE TO authenticated USING (auth.uid() = user_id);
+
+-- 4. אופציונלי: צפייה בלו"ז הכללי כדי לדעת מה תפוס (ללא פרטי לקוח)
+CREATE POLICY "view_booked_slots" ON public.appointments
+FOR SELECT TO anon USING (true);
                         </pre>
-                    </div>
-                    <div className="text-[10px] text-slate-500 italic mt-2">
-                        * העתיקי והריצי ב-SQL Editor של Supabase.
                     </div>
                 </div>
             )}
 
             {loading ? (
                 <div className="flex justify-center p-10"><Loader2 className="animate-spin text-slate-400" /></div>
-            ) : clients.length === 0 ? (
-                <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-200">
-                    <Users size={48} className="mx-auto text-slate-300 mb-4" />
-                    <p className="text-slate-500 font-medium">אין לקוחות במאגר</p>
-                </div>
             ) : (
                 <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                     {clients.map((client, i) => (
