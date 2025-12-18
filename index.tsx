@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { GoogleGenAI } from "@google/genai";
+import { createClient, User as SupabaseUser } from "@supabase/supabase-js";
 import { 
   Calendar, 
   Clock, 
@@ -33,15 +34,26 @@ import {
   Lock,
   KeyRound,
   UserPlus,
-  LogIn
+  LogIn,
+  AlertTriangle,
+  Copy,
+  Check,
+  LogOut,
+  List,
+  Phone,
+  Shield,
+  Eye,
+  EyeOff
 } from "lucide-react";
 
 // --- Configuration ---
 
-// ============================================================================
-// 👇 כאן להדביק את הכתובת שקיבלת בשלב ה-Deploy (סיומת /exec) 👇
-// ============================================================================
-const API_URL = "https://script.google.com/macros/s/AKfycbzC4nufgKj2TbykzzigKykEjIcdruwp_JNrGBNBkm18uefMBe4zN_6m6l5eW0hK6Rtm/exec"; 
+// SUPABASE CONFIGURATION
+const SUPABASE_URL = process.env.SUPABASE_URL || "https://hhqzjgmghwkcetzcvtth.supabase.co";
+const SUPABASE_ANON_KEY = process.env.SUPABASE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhocXpqZ21naHdrY2V0emN2dHRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4OTc3MjMsImV4cCI6MjA4MTQ3MzcyM30.FjjT1SBR6WJtYC742KXMjazgQnhkqljHLMQJsQJDC00";
+
+// Initialize Supabase
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Business Rules
 const BUSINESS_HOURS = {
@@ -63,22 +75,33 @@ type Service = {
 };
 
 type AppointmentState = {
-  step: "home" | "services" | "date" | "details" | "confirmation" | "waiting-list-confirmed" | "manage-login" | "manage-list" | "register";
+  step: "welcome" | "login" | "register" | "home" | "services" | "date" | "details" | "confirmation" | "waiting-list-confirmed" | "manage-list" | "client-registry";
   service: Service | null;
   date: Date | null;
   time: string | null;
   clientName: string;
   clientPhone: string;
   clientEmail: string;
-  clientPassword: string; // Kept in state for compatibility, but removed from input
   isWaitingList: boolean;
+  isDemoMode?: boolean; // New flag to track RLS fallback
+  currentUser: SupabaseUser | null;
 };
 
 type ClientBooking = {
+  id?: number;
   date: string;
   time: string;
   service: string;
   name: string;
+};
+
+type ClientProfile = {
+    id: string;
+    full_name: string;
+    phone: string;
+    email: string;
+    password?: string;
+    created_at: string;
 };
 
 type ChatMessage = {
@@ -160,397 +183,230 @@ const addMinutesStr = (timeStr: string, minutesToAdd: number): string => {
   return `${h}:${m}`;
 };
 
-// Aggressive time normalizer
-const normalizeTime = (t: any): string | null => {
-    if (!t) return null;
-    let s = String(t).trim();
-    if (s.includes('T') || s.match(/^\d{4}-/)) {
-        const d = new Date(s);
-        if (!isNaN(d.getTime())) {
-            return formatTime(d);
-        }
-    }
-    const match = s.match(/(\d{1,2}):(\d{2})/);
-    if (match) {
-        let h = match[1].padStart(2, '0');
-        let m = match[2];
-        return `${h}:${m}`;
-    }
-    return null;
-}
-
-// Aggressive date key cleaner
-const normalizeDateKey = (k: any): string => {
-    if (!k) return "";
-    let dateStr = String(k).trim();
-    if (dateStr.includes('T') || dateStr.includes('Z')) {
-        const d = new Date(dateStr);
-        if (!isNaN(d.getTime())) {
-            return getDateKey(d);
-        }
-    }
-    const isoDateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (isoDateMatch) {
-       return `${isoDateMatch[1]}-${isoDateMatch[2]}-${isoDateMatch[3]}`;
-    }
-    const ilMatch = dateStr.match(/^(\d{1,2})[/. -](\d{1,2})[/. -](\d{2,4})/);
-    if (ilMatch) {
-       const day = ilMatch[1].padStart(2, '0');
-       const month = ilMatch[2].padStart(2, '0');
-       let year = ilMatch[3];
-       if (year.length === 2) year = '20' + year;
-       return `${year}-${month}-${day}`;
-    }
-    const d = new Date(dateStr);
-    if (!isNaN(d.getTime())) {
-        return getDateKey(d);
-    }
-    return "";
-};
-
 const isWorkingDay = (date: Date) => WORKING_DAYS.includes(date.getDay());
-
-const getNextWorkingDays = (count: number) => {
-  const days: Date[] = [];
-  let current = new Date();
-  while (days.length < count) {
-    if (isWorkingDay(current)) {
-      days.push(new Date(current));
-    }
-    current.setDate(current.getDate() + 1);
-  }
-  return days;
-};
 
 const getWaitCount = (t: string) => {
   const sum = t.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   return (sum % 4) + 1; // Returns 1 to 4
 };
 
-// --- API Service (Google Sheets Bridge) ---
+// --- API Service (Supabase Implementation) ---
 
 const api = {
-  // Explicit connection tester
-  testConnection: async (): Promise<{ success: boolean; message: string }> => {
-    if (!API_URL) return { success: false, message: "לא מוגדרת כתובת שרת (API_URL)." };
-    
-    if ((API_URL as string).includes("docs.google.com") || (API_URL as string).includes("spreadsheets")) {
-        return { 
-            success: false, 
-            message: "שגיאת קונפיגורציה: הוזן קישור לגיליון (Docs) במקום קישור ל-App Script. יש להשתמש בכתובת ה-Web App המסתיימת ב-/exec." 
-        };
-    }
-
-    try {
-        const start = Date.now();
-        const response = await fetch(`${API_URL}?action=ping&t=${start}`, {
-            method: 'GET',
-            redirect: 'follow',
-            signal: AbortSignal.timeout(8000)
-        });
-        const end = Date.now();
-        
-        if (response.ok) {
-             const text = await response.text();
-             if (text.includes("Google Drive") || text.includes("sign in")) {
-                 return { success: false, message: "שגיאת הרשאות: יש להגדיר את הסקריפט כ-Anyone." };
-             }
-            return { success: true, message: `מחובר בהצלחה! זמן תגובה: ${end - start}ms` };
-        } else {
-            return { success: false, message: `שגיאת שרת: ${response.status} ${response.statusText}` };
-        }
-    } catch (e: any) {
-        return { success: false, message: `שגיאת תקשורת: ${e.message || 'לא ניתן להתחבר'}` };
-    }
-  },
-
-  // Implementation of "Method 1": Fetch all raw data and filter locally
+  // Fetch all booked slots
   fetchBookedSlots: async (): Promise<{ connected: boolean; slots: Record<string, string[]>; error?: string }> => {
-    const mockSlots: Record<string, string[]> = {}; 
-
-    if (!API_URL) return { connected: false, slots: mockSlots, error: "Setup Required" };
-
-    if ((API_URL as string).includes("docs.google.com") || (API_URL as string).includes("spreadsheets")) {
-        return { 
-            connected: false, 
-            slots: mockSlots, 
-            error: "הוגדר קישור שגוי ל-Google Sheet (יש להשתמש בקישור Script Exec)." 
-        };
-    }
-
     try {
-      const urlWithTimestamp = `${API_URL}?t=${new Date().getTime()}&action=get_slots`;
-      const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), 8000);
+      // Fetch all future appointments
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('date, time, service');
+        
+      if (error) throw error;
 
-      const response = await fetch(urlWithTimestamp, {
-          method: 'GET',
-          redirect: 'follow', 
-          signal: controller.signal,
-          cache: 'no-store',
-          headers: {
-              'Pragma': 'no-cache',
-              'Cache-Control': 'no-cache'
-          }
-      });
-      clearTimeout(id);
-      
-      if (!response.ok) throw new Error(`Server responded with ${response.status}`);
-      
-      const text = await response.text();
-      let rawData;
-      
-      if (text.trim().startsWith("<") || text.includes("<!DOCTYPE html>")) {
-          return { 
-              connected: false, 
-              slots: mockSlots, 
-              error: "שגיאת הרשאות: ה-Script חייב להיות מוגדר כ-Anyone (ולא Only Me)." 
-          };
-      }
-
-      try {
-          rawData = JSON.parse(text);
-      } catch (e) {
-          throw new Error("Invalid JSON response");
-      }
-      
       const normalizedData: Record<string, string[]> = {};
       
-      const processEntry = (dateVal: any, timeVal: any, serviceVal: any) => {
-          if (!dateVal || !timeVal) return;
-          if (String(dateVal).toLowerCase().includes('date') && String(timeVal).toLowerCase().includes('time')) return;
-
-          const cleanDateKey = normalizeDateKey(dateVal);
-          const cleanTime = normalizeTime(timeVal);
+      data?.forEach((row: any) => {
+          const dateKey = row.date;
+          const time = row.time;
           
-          if (cleanDateKey && cleanTime) {
-              if (!normalizedData[cleanDateKey]) {
-                  normalizedData[cleanDateKey] = [];
-              }
-              
-              if (!normalizedData[cleanDateKey].includes(cleanTime)) {
-                  normalizedData[cleanDateKey].push(cleanTime);
-              }
-
-              let duration = 30; // Default minimum duration
-              if (serviceVal) {
-                  const sName = String(serviceVal).trim();
-                  const matched = SERVICES.find(s => s.name === sName || sName.includes(s.name));
-                  if (matched) {
-                      duration = matched.duration;
-                  }
-              }
-
-              const slotsToBlock = Math.ceil(duration / 30);
-              for (let i = 1; i < slotsToBlock; i++) {
-                   const nextSlot = addMinutesStr(cleanTime, i * 30);
-                   if (!normalizedData[cleanDateKey].includes(nextSlot)) {
-                       normalizedData[cleanDateKey].push(nextSlot);
-                   }
-              }
+          if (!normalizedData[dateKey]) {
+              normalizedData[dateKey] = [];
           }
-      };
+          
+          if (!normalizedData[dateKey].includes(time)) {
+              normalizedData[dateKey].push(time);
+          }
 
-      if (Array.isArray(rawData)) {
-          rawData.forEach((row: any) => {
-              let dateVal, timeVal, serviceVal;
-              if (Array.isArray(row)) {
-                  dateVal = row[0]; 
-                  timeVal = row[1];
-                  serviceVal = row[2]; // Column C
-              } else if (typeof row === 'object') {
-                  dateVal = row.date || row.Date || row.DATE;
-                  timeVal = row.time || row.Time || row.TIME;
-                  serviceVal = row.service || row.Service || row.SERVICE;
-              }
-              processEntry(dateVal, timeVal, serviceVal);
-          });
-      } 
-      else if (rawData && typeof rawData === 'object') {
-          Object.keys(rawData).forEach(key => {
-              if (Array.isArray(rawData[key])) {
-                  const cleanKey = normalizeDateKey(key);
-                  if (cleanKey) {
-                      rawData[key].forEach((item: any) => {
-                          let tVal, sVal;
-                          if (typeof item === 'object' && item !== null) {
-                              tVal = item.time || item.Time;
-                              sVal = item.service || item.Service;
-                          } else {
-                              tVal = item;
-                          }
-                          processEntry(cleanKey, tVal, sVal);
-                      });
-                  } else {
-                      rawData[key].forEach((row: any) => {
-                           let dateVal, timeVal, serviceVal;
-                           if (Array.isArray(row)) {
-                               dateVal = row[0];
-                               timeVal = row[1];
-                               serviceVal = row[2];
-                           } else {
-                               dateVal = row.date || row.Date;
-                               timeVal = row.time || row.Time;
-                               serviceVal = row.service || row.Service;
-                           }
-                          processEntry(dateVal, timeVal, serviceVal);
-                      });
-                  }
-              }
-          });
-      }
+          // Calculate duration blocking
+          let duration = 30;
+          const sName = row.service;
+          const matched = SERVICES.find(s => s.name === sName);
+          if (matched) duration = matched.duration;
 
-      console.log("Processed Booked Slots (Real Time with Duration):", normalizedData);
+          const slotsToBlock = Math.ceil(duration / 30);
+          for (let i = 1; i < slotsToBlock; i++) {
+                const nextSlot = addMinutesStr(time, i * 30);
+                if (!normalizedData[dateKey].includes(nextSlot)) {
+                    normalizedData[dateKey].push(nextSlot);
+                }
+          }
+      });
+
       return { connected: true, slots: normalizedData };
-    } catch (error) {
-      console.warn("API connection failed. Switching to Offline Mode.", error);
-      return { connected: false, slots: mockSlots, error: "שגיאת תקשורת כללית" };
+    } catch (error: any) {
+      console.error("Supabase fetch slots error:", error);
+      return { connected: false, slots: {}, error: error.message };
     }
   },
 
-  // Login verification
+  // Login (Supabase Auth)
   loginUser: async (email: string, password: string): Promise<{success: boolean, message?: string}> => {
     try {
-        if (!API_URL) throw new Error("No API URL");
-        // Using action 'login'
-        const url = `${API_URL}?t=${new Date().getTime()}&action=login&sheet=Register&email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`;
-        
-        const response = await fetch(url, { redirect: 'follow' });
-        
-        if (!response.ok) throw new Error("Server error");
-        
-        const text = await response.text();
-        let data;
-        try {
-            data = JSON.parse(text);
-        } catch(e) {
-            console.error("Invalid JSON:", text);
-            if (text.includes("<!DOCTYPE html>")) {
-                return { success: false, message: "שגיאת חיבור לשרת (הרשאות)" };
-            }
-            throw new Error("תגובת שרת לא תקינה");
-        }
-        
-        if (data && data.success) {
-            return { success: true };
-        } else {
-             return { success: false, message: data.error || "אימייל או סיסמה שגויים" };
-        }
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+        });
 
-    } catch (error) {
-        console.error("Login failed:", error);
-        return { success: false, message: "שגיאת תקשורת או פרטים שגויים" };
+        if (error) throw error;
+        return { success: true };
+    } catch (error: any) {
+        console.error("Login failed:", error.message);
+        let message = "שגיאה בכניסה";
+        
+        if (error.message.includes("Invalid login credentials")) {
+            message = "אימייל או סיסמה שגויים. אנא נסה שוב.";
+        } else if (error.message.includes("Email not confirmed")) {
+            message = "כתובת האימייל טרם אושרה. אנא בדוק את תיבת המייל שלך.";
+        }
+        
+        return { success: false, message };
     }
   },
 
-  // NEW: Register User to 'Register' sheet
-  registerUser: async (email: string, password: string): Promise<{success: boolean, message?: string}> => {
+  // Register (Supabase Auth)
+  registerUser: async (email: string, password: string, fullName: string, phone: string): Promise<{success: boolean, message?: string, requiresConfirmation?: boolean}> => {
     try {
-        if (!API_URL) throw new Error("No API URL");
-        
-        // This payload structure is designed to append a row with Date, Email, Password
-        const payload = {
-            action: 'register',
-            sheet: 'Register', // Specifically targeting the 'Register' tab
-            date: new Date().toLocaleDateString('he-IL'),
-            email: email,
-            password: password
-        };
-        
-        console.log("Sending registration:", payload); // Debug logging
-
-        const postUrl = `${API_URL}?t=${new Date().getTime()}&action=register`;
-        await fetch(postUrl, {
-            method: "POST",
-            mode: "no-cors", 
-            // Removed keepalive to avoid potential browser conflicts
-            headers: { "Content-Type": "text/plain" },
-            body: JSON.stringify(payload)
+        // 1. Sign up user
+        const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+                emailRedirectTo: window.location.origin, // Redirect back to current origin instead of localhost
+                data: {
+                    full_name: fullName,
+                    phone: phone
+                }
+            }
         });
+
+        if (error) {
+            if (error.message.includes("already registered")) {
+                 return { success: false, message: "כתובת האימייל הזו כבר רשומה במערכת." };
+            }
+            throw error;
+        }
+
+        // 2. Attempt to add to 'clients' table (Registry)
+        // Note: This requires a 'clients' table in Supabase public schema
+        if (data.user) {
+            try {
+                await supabase.from('clients').insert([{
+                    id: data.user.id,
+                    email: email,
+                    full_name: fullName,
+                    phone: phone,
+                    password: password // Store plain text password (Demo only - insecure in production!)
+                }]);
+            } catch (tableError) {
+                console.warn("Could not save to clients table (Registry). Verify table exists and RLS policies.", tableError);
+                // We don't block registration if this fails, but we log it.
+            }
+        }
+        
+        // Check if email confirmation is required (user created but no session)
+        if (data.user && !data.session) {
+            return { success: true, requiresConfirmation: true };
+        }
         
         return { success: true };
 
     } catch (error: any) {
         console.error("Registration failed:", error);
-        return { success: false, message: "שגיאה בהרשמה" };
+        return { success: false, message: error.message || "שגיאה בהרשמה" };
     }
   },
 
-  // Fetch bookings for a specific client
-  fetchClientBookings: async (email: string): Promise<ClientBooking[]> => {
+  fetchClients: async (): Promise<{ success: boolean, clients: ClientProfile[], error?: string }> => {
+      try {
+          const { data, error } = await supabase
+            .from('clients')
+            .select('*')
+            .order('created_at', { ascending: false });
+            
+          if (error) throw error;
+          return { success: true, clients: data as ClientProfile[] };
+      } catch (error: any) {
+          console.error("Error fetching clients:", error);
+          return { success: false, clients: [], error: error.message };
+      }
+  },
+
+  // Fetch Client Bookings
+  fetchClientBookings: async (userId: string): Promise<ClientBooking[]> => {
     try {
-      if (!API_URL) throw new Error("No API URL");
-      const url = `${API_URL}?t=${new Date().getTime()}&action=get_client_bookings&email=${encodeURIComponent(email)}`;
-      const response = await fetch(url, { redirect: 'follow' });
-      if (!response.ok) throw new Error("Fetch failed");
-      const data = await response.json();
-      return Array.isArray(data) ? data : [];
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('*')
+        .eq('user_id', userId)
+        .order('date', { ascending: true });
+
+      if (error) throw error;
+      return data as ClientBooking[];
     } catch (error) {
-      console.warn("Failed to fetch client bookings, using demo data", error);
+      console.error("Fetch client bookings error:", error);
       return [];
     }
   },
 
-  // Save booking
-  saveBooking: async (bookingData: any) => {
+  // Save Booking
+  saveBooking: async (bookingData: any): Promise<{ success: boolean; message?: string; isDemo?: boolean }> => {
     try {
-      const type = bookingData.isWaitingList ? "רשימת המתנה" : "תור רגיל";
-      const payload = {
-        action: 'save',
-        date: getDateKey(bookingData.date),
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      // Construct payload
+      const payload: any = {
+        date: getDateKey(new Date(bookingData.date)), 
         time: bookingData.time,
         service: bookingData.service.name,
-        name: bookingData.clientName,
-        phone: bookingData.clientPhone,
-        email: bookingData.clientEmail,
-        password: bookingData.clientPassword, 
-        type: type 
+        client_name: bookingData.clientName,
+        client_phone: bookingData.clientPhone,
+        client_email: bookingData.clientEmail,
       };
+
+      // Only add user_id if we actually have a user. 
+      if (user) {
+        payload.user_id = user.id;
+      }
+
+      console.log("Saving booking payload:", payload);
+
+      const { error } = await supabase.from('appointments').insert([payload]);
       
-      console.log("Saving booking:", payload);
-
-      if (!API_URL) throw new Error("No API URL");
-
-      const postUrl = `${API_URL}?t=${new Date().getTime()}&action=save`;
-      await fetch(postUrl, {
-        method: "POST",
-        mode: "no-cors", 
-        headers: { "Content-Type": "text/plain" },
-        body: JSON.stringify(payload)
-      });
-      return { success: true };
-    } catch (error) {
-      console.error("Error saving booking (Demo mode activated):", error);
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      return { success: true };
+      if (error) {
+          console.error("Supabase Insert Error:", JSON.stringify(error, null, 2));
+          
+          if (error.code === '42501' || error.message.toLowerCase().includes('policy')) {
+              console.warn("Backend RLS Policy blocked the insert. Proceeding in UI-only mode.");
+              return { success: true, isDemo: true }; 
+          }
+          
+          throw error;
+      }
+      return { success: true, isDemo: false };
+    } catch (error: any) {
+      console.error("Error saving booking:", error);
+      return { success: false, message: error.message || "שגיאה בשמירת התור" };
     }
   },
 
-  // Cancel booking
-  cancelBooking: async (booking: ClientBooking, email: string) => {
+  // Cancel Booking
+  cancelBooking: async (bookingId: number) => {
     try {
-      if (!API_URL) throw new Error("No API URL");
+      const { error } = await supabase
+        .from('appointments')
+        .delete()
+        .eq('id', bookingId);
 
-      const payload = {
-        action: 'cancel',
-        date: booking.date, 
-        time: booking.time,
-        email: email
-      };
-
-      const postUrl = `${API_URL}?t=${new Date().getTime()}&action=cancel`;
-      await fetch(postUrl, {
-        method: "POST",
-        mode: "no-cors", 
-        headers: { "Content-Type": "text/plain" },
-        body: JSON.stringify(payload)
-      });
+      if (error) throw error;
       return { success: true };
     } catch (error) {
-      console.error("Error canceling booking (Demo mode activated):", error);
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return { success: true };
+      console.error("Error canceling booking:", error);
+      return { success: false };
     }
+  },
+
+  logout: async () => {
+      await supabase.auth.signOut();
   }
 };
 
@@ -603,55 +459,87 @@ const generateTimeSlots = (
 
 function App() {
   const [state, setState] = useState<AppointmentState>({
-    step: "home",
+    step: "welcome", // Default start step
     service: null,
     date: null,
     time: null,
     clientName: "",
     clientPhone: "",
     clientEmail: "",
-    clientPassword: "",
-    isWaitingList: false
+    isWaitingList: false,
+    isDemoMode: false,
+    currentUser: null
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isLoadingSession, setIsLoadingSession] = useState(true);
 
-  // If API URL is missing, show setup screen
-  if (!API_URL) {
-      return (
-          <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-              <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center space-y-6">
-                  <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto">
-                      <Settings size={32} />
-                  </div>
-                  <h1 className="text-2xl font-bold text-slate-900">הגדרת מערכת נדרשת</h1>
-                  <p className="text-slate-600">
-                      כדי שהאתר יעבוד, יש לחבר אותו לגוגל שיטס.
-                  </p>
-                  <div className="text-right bg-slate-50 p-4 rounded-xl text-sm space-y-2 border border-slate-200">
-                      <p>1. פתח את הגיליון שלך.</p>
-                      <p>2. לך ל-Extensions &gt; Apps Script.</p>
-                      <p>3. הדבק את הקוד שקיבלת ועשה Deploy (Anyone).</p>
-                      <p>4. העתק את הכתובת (exec) והדבק אותה בקובץ <code>index.tsx</code>.</p>
-                  </div>
-              </div>
-          </div>
-      )
-  }
+  // Check auth state on load
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user) {
+            const { user } = session;
+            setState(prev => ({ 
+                ...prev, 
+                currentUser: user,
+                clientEmail: user.email || "",
+                // Try to pre-fill name/phone from metadata if available
+                clientName: user.user_metadata?.full_name || "",
+                clientPhone: user.user_metadata?.phone || "",
+                step: "home" // Go to dashboard if logged in
+            }));
+        } else {
+             setState(prev => ({ ...prev, step: "welcome" }));
+        }
+        setIsLoadingSession(false);
+    });
 
-  const resetFlow = () => {
-    setState({
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+         if (session?.user) {
+             const { user } = session;
+             setState(prev => ({ 
+                ...prev, 
+                currentUser: user,
+                clientEmail: user.email || "",
+                clientName: user.user_metadata?.full_name || prev.clientName,
+                clientPhone: user.user_metadata?.phone || prev.clientPhone,
+                // Only move to home if we are in an auth screen
+                step: ["welcome", "login", "register"].includes(prev.step) ? "home" : prev.step
+            }));
+         } else {
+             setState(prev => ({ 
+                ...prev, 
+                currentUser: null,
+                step: "welcome" 
+            }));
+         }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+      await api.logout();
+      // State update handled by onAuthStateChange
+  };
+
+  const resetBookingFlow = () => {
+    // Reset booking data but keep user logged in and go to dashboard (home)
+    setState(prev => ({
+      ...prev,
       step: "home",
       service: null,
       date: null,
       time: null,
-      clientName: "",
-      clientPhone: "",
-      clientEmail: "",
-      clientPassword: "",
-      isWaitingList: false
-    });
+      // We don't reset name/phone if we have them from user profile
+      clientName: prev.currentUser?.user_metadata?.full_name || prev.clientName,
+      clientPhone: prev.currentUser?.user_metadata?.phone || prev.clientPhone,
+      isWaitingList: false,
+      isDemoMode: false
+    }));
     setIsSubmitting(false);
+    setSubmissionError(null);
   };
 
   const nextStep = (next: AppointmentState["step"]) => {
@@ -660,15 +548,31 @@ function App() {
 
   const handleDetailsSubmit = async () => {
     setIsSubmitting(true);
-    await api.saveBooking(state);
+    setSubmissionError(null);
+    const result = await api.saveBooking(state);
     setIsSubmitting(false);
     
-    if (state.isWaitingList) {
-      nextStep("waiting-list-confirmed");
+    if (result.success) {
+      if (result.isDemo) {
+        setState(prev => ({ ...prev, isDemoMode: true }));
+      }
+      if (state.isWaitingList) {
+        nextStep("waiting-list-confirmed");
+      } else {
+        nextStep("confirmation");
+      }
     } else {
-      nextStep("confirmation");
+      setSubmissionError(result.message || "אירעה שגיאה בשמירת הנתונים. אנא נסי שוב.");
     }
   };
+
+  if (isLoadingSession) {
+      return (
+          <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">
+              <Loader2 className="animate-spin text-slate-400" size={32} />
+          </div>
+      )
+  }
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-slate-800 font-sans pb-20 md:pb-0 relative overflow-x-hidden">
@@ -680,40 +584,71 @@ function App() {
       </div>
 
       <div className="relative z-10">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100">
-        <div className="w-full max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 cursor-pointer" onClick={resetFlow}>
-            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white font-bold text-lg">
-              G
+      
+      {/* Header - Only show if not on welcome/auth screens */}
+      {!["welcome", "login", "register"].includes(state.step) && (
+          <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100">
+            <div className="w-full max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-2 cursor-pointer" onClick={resetBookingFlow}>
+                <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white font-bold text-lg">
+                  G
+                </div>
+                <span className="text-lg font-bold tracking-tight text-slate-900">Glow Studio</span>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                 {state.currentUser && (
+                    <button onClick={handleLogout} className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-red-600 transition bg-transparent px-2 py-2">
+                         <LogOut size={14} />
+                         <span>יציאה</span>
+                    </button>
+                 )}
+                 {state.step !== "home" && (
+                    <button onClick={resetBookingFlow} className="text-sm text-slate-500 hover:text-slate-900 transition font-medium">
+                      ביטול
+                    </button>
+                 )}
+              </div>
             </div>
-            <span className="text-lg font-bold tracking-tight text-slate-900">Glow Studio</span>
-          </div>
-          
-          <div className="flex items-center gap-2">
-             {state.step === 'home' ? (
-                <>
-                  <button onClick={() => nextStep('manage-login')} className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 transition bg-white px-3 py-2 rounded-full border border-slate-200 hover:border-slate-300">
-                    <User size={14} />
-                    <span>אזור אישי</span>
-                  </button>
-                  <button onClick={() => nextStep('register')} className="flex items-center gap-1.5 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 transition px-3 py-2 rounded-full">
-                    <UserPlus size={14} />
-                    <span>הרשמה</span>
-                  </button>
-                </>
-             ) : (
-                <button onClick={resetFlow} className="text-sm text-slate-500 hover:text-slate-900 transition font-medium">
-                  ביטול
-                </button>
-             )}
-          </div>
-        </div>
-      </header>
+          </header>
+      )}
 
       <main className="w-full max-w-lg mx-auto px-4 py-8">
-        {state.step === "home" && (
-          <HeroSection onStart={() => nextStep("services")} />
+        
+        {/* Auth Flows */}
+        {state.step === "welcome" && (
+            <WelcomeScreen 
+                onLogin={() => nextStep("login")} 
+                onRegister={() => nextStep("register")} 
+            />
+        )}
+
+        {state.step === "login" && (
+          <ManageLogin 
+            onLoginSuccess={() => nextStep("home")}
+            onBack={() => nextStep("welcome")}
+          />
+        )}
+
+        {state.step === "register" && (
+          <Register 
+            onRegisterSuccess={() => {
+                alert("נרשמת בהצלחה! כעת תוכלי להתחבר.");
+                nextStep("login"); // Or directly home if auto-login
+            }}
+            onBack={() => nextStep("welcome")}
+          />
+        )}
+
+        {/* User Dashboard / Booking Flow */}
+        {state.step === "home" && state.currentUser && (
+          <HeroSection 
+            userEmail={state.currentUser.email} 
+            userName={state.clientName}
+            onStartBooking={() => nextStep("services")} 
+            onManageBookings={() => nextStep("manage-list")}
+            onViewRegistry={() => nextStep("client-registry")}
+          />
         )}
 
         {state.step === "services" && (
@@ -732,7 +667,7 @@ function App() {
             service={state.service}
             selectedDate={state.date}
             selectedTime={state.time}
-            onDateSelect={(d: Date) => setState(prev => ({ ...prev, date: d, time: null, isWaitingList: false }))}
+            onDateSelect={(d: Date) => setState(prev => ({ ...prev, date: d, time: null, isWaitingList: false, isDemoMode: false }))}
             onTimeSelect={(t: string, isWaitingList: boolean) => setState(prev => ({ ...prev, time: t, isWaitingList }))}
             onNext={() => nextStep("details")}
             onBack={() => nextStep("services")}
@@ -744,9 +679,10 @@ function App() {
           <ClientDetails 
             name={state.clientName}
             phone={state.clientPhone}
-            email={state.clientEmail}
+            email={state.clientEmail} // Should be pre-filled
             isWaitingList={state.isWaitingList}
             isLoading={isSubmitting}
+            error={submissionError}
             onChange={(field: string, val: string) => setState(prev => ({ ...prev, [field]: val }))}
             onNext={handleDetailsSubmit}
             onBack={() => nextStep("date")}
@@ -754,44 +690,30 @@ function App() {
         )}
 
         {state.step === "confirmation" && (
-          <Confirmation state={state} onReset={resetFlow} />
+          <Confirmation state={state} onReset={resetBookingFlow} />
         )}
 
         {state.step === "waiting-list-confirmed" && (
-          <WaitingListConfirmation state={state} onReset={resetFlow} />
+          <WaitingListConfirmation state={state} onReset={resetBookingFlow} />
         )}
 
-        {state.step === "manage-login" && (
-          <ManageLogin 
-            onLogin={(email) => {
-              setState(prev => ({ ...prev, clientEmail: email }));
-              nextStep('manage-list');
-            }}
-            onBack={() => nextStep('home')}
-          />
-        )}
-        
-        {state.step === "register" && (
-          <Register 
-            onRegisterSuccess={(email) => {
-               alert("נרשמת בהצלחה! כעת ניתן להתחבר.");
-               nextStep('manage-login');
-            }}
-            onBack={() => nextStep('home')}
-          />
-        )}
-
-        {state.step === "manage-list" && (
+        {state.step === "manage-list" && state.currentUser && (
           <ManageList 
-            email={state.clientEmail}
-            onBack={() => nextStep('home')}
+            userId={state.currentUser.id}
+            onBack={() => nextStep("home")}
+          />
+        )}
+
+        {state.step === "client-registry" && (
+          <ClientRegistry 
+            onBack={() => nextStep("home")}
           />
         )}
 
       </main>
 
-      {/* Floating Chat Button */}
-      {state.step !== "confirmation" && state.step !== "waiting-list-confirmed" && (
+      {/* Floating Chat Button (Only when logged in and not in final confirmation) */}
+      {state.currentUser && !["welcome", "login", "register", "confirmation", "waiting-list-confirmed"].includes(state.step) && (
         <div className="fixed bottom-6 left-6 z-50">
           <button 
             onClick={() => setIsChatOpen(!isChatOpen)}
@@ -813,375 +735,100 @@ function App() {
 
 // --- Sub-Components ---
 
-function Register({ onRegisterSuccess, onBack }: { onRegisterSuccess: (email: string) => void, onBack: () => void }) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleRegister = async () => {
-    if (!email || !email.includes("@")) {
-        setError("נא להזין כתובת אימייל תקינה");
-        return;
-    }
-    if (password.length !== 6 || !/^\d+$/.test(password)) {
-        setError("הסיסמה חייבת להכיל 6 ספרות בדיוק");
-        return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    const result = await api.registerUser(email, password);
-    setIsLoading(false);
-
-    if (result.success) {
-        onRegisterSuccess(email);
-    } else {
-        setError(result.message || "שגיאה בהרשמה. נסי שוב.");
-    }
-  };
-
-  return (
-    <div className="space-y-8 animate-fade-in-up">
-       <div className="flex items-center gap-4">
-        <button onClick={onBack} className="p-2 -mr-2 rounded-full hover:bg-slate-100 text-slate-500"><ChevronRight /></button>
-        <h2 className="text-2xl font-bold">הרשמה ללקוחות</h2>
-      </div>
-
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-6">
-            <div className="flex items-start gap-3 text-slate-600 bg-slate-50 p-4 rounded-xl">
-               <Info size={20} className="flex-shrink-0 mt-0.5 text-slate-900" />
-               <p className="text-sm">ההרשמה מאפשרת לך לנהל את התורים שלך בקלות, לצפות בהיסטוריה ולבצע שינויים.</p>
+function WelcomeScreen({ onLogin, onRegister }: { onLogin: () => void, onRegister: () => void }) {
+    return (
+        <div className="flex flex-col items-center justify-center min-h-[80vh] text-center space-y-8 animate-fade-in px-4">
+             <div className="relative">
+                <div className="absolute inset-0 bg-pink-200 blur-3xl opacity-30 rounded-full"></div>
+                <div className="w-20 h-20 bg-black text-white rounded-full flex items-center justify-center text-3xl font-bold relative z-10 shadow-xl mb-4">G</div>
             </div>
-
-            <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">כתובת אימייל</label>
-                  <div className="relative">
-                      <input 
-                        type="email" 
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="your@email.com"
-                        className="w-full p-3.5 pl-4 pr-12 rounded-xl border border-slate-200 focus:border-black focus:ring-0 outline-none transition-all bg-slate-50 focus:bg-white text-base"
-                      />
-                      <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">סיסמה (6 ספרות)</label>
-                  <div className="relative">
-                      <input 
-                        type="password" 
-                        maxLength={6}
-                        inputMode="numeric"
-                        value={password}
-                        onChange={(e) => {
-                            if (/^\d*$/.test(e.target.value)) setPassword(e.target.value);
-                        }}
-                        placeholder="123456"
-                        className="w-full p-3.5 pl-4 pr-12 rounded-xl border border-slate-200 focus:border-black focus:ring-0 outline-none transition-all bg-slate-50 focus:bg-white text-base font-mono tracking-widest"
-                      />
-                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                  </div>
-                </div>
-            </div>
-
-            {error && <p className="text-red-600 text-sm font-medium bg-red-50 p-3 rounded-lg flex items-center gap-2"><AlertCircle size={16}/> {error}</p>}
-
-            <button
-                onClick={handleRegister}
-                disabled={isLoading}
-                className="w-full bg-black text-white py-4 rounded-xl font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 mt-2"
-            >
-                {isLoading ? <Loader2 className="animate-spin" size={20} /> : 'הירשמי עכשיו'}
-            </button>
-      </div>
-    </div>
-  )
-}
-
-function HeroSection({ onStart }: { onStart: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center space-y-8 py-8 animate-fade-in-up">
-      <div className="relative">
-        <div className="w-32 h-32 bg-slate-200 rounded-full overflow-hidden shadow-lg border-4 border-white relative z-10">
-          <img 
-            src="https://images.unsplash.com/photo-1522337660859-02fbefca4702?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80" 
-            alt="Beauty Salon" 
-            className="w-full h-full object-cover"
-          />
-        </div>
-      </div>
-      
-      <div className="text-center space-y-3 max-w-xs">
-        <h1 className="text-3xl font-bold text-slate-900 leading-tight">
-          הזמן שלך <span className="text-pink-500">לזהור</span>
-        </h1>
-        <p className="text-slate-500 text-base leading-relaxed">
-          עיצוב גבות וריסים ברמה הגבוהה ביותר. שרייני תור בקלות.
-        </p>
-      </div>
-
-      <button 
-        onClick={onStart}
-        className="w-full max-w-xs bg-black text-white py-4 rounded-xl font-bold shadow-lg hover:bg-slate-800 transition-all flex items-center justify-center gap-2 text-lg"
-      >
-        <Calendar size={20} />
-        קבעי תור עכשיו
-      </button>
-
-      <div className="grid grid-cols-3 gap-6 pt-4 w-full max-w-xs border-t border-slate-100">
-        <div className="flex flex-col items-center gap-1 text-slate-400">
-          <Star size={18} />
-          <span className="text-[10px] font-medium uppercase tracking-wider">מומחיות</span>
-        </div>
-        <div className="flex flex-col items-center gap-1 text-slate-400">
-          <Sparkles size={18} />
-          <span className="text-[10px] font-medium uppercase tracking-wider">איכות</span>
-        </div>
-        <div className="flex flex-col items-center gap-1 text-slate-400">
-          <Clock size={18} />
-          <span className="text-[10px] font-medium uppercase tracking-wider">זמינות</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ServiceSelection({ services, onSelect, onBack }: { services: Service[], onSelect: (s: Service) => void, onBack: () => void }) {
-  return (
-    <div className="space-y-6 animate-fade-in-up">
-      <div className="flex items-center gap-4">
-        <button onClick={onBack} className="p-2 -mr-2 rounded-full hover:bg-slate-100 text-slate-500"><ChevronRight /></button>
-        <h2 className="text-2xl font-bold">בחרי טיפול</h2>
-      </div>
-      
-      <div className="grid gap-3">
-        {services.map(service => (
-          <div 
-            key={service.id}
-            onClick={() => onSelect(service)}
-            className="group bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-slate-200 transition-all cursor-pointer flex items-center justify-between"
-          >
-            <div>
-              <h3 className="font-bold text-lg text-slate-900">{service.name}</h3>
-              <p className="text-slate-500 text-sm mt-1">{service.description}</p>
-              <div className="flex items-center gap-4 mt-3 text-xs font-medium text-slate-400">
-                <span className="flex items-center gap-1"><Clock size={12} /> {service.duration} דק'</span>
-                <span className="flex items-center gap-1 text-slate-900 font-bold">₪{service.price}</span>
-              </div>
-            </div>
-            <div className="w-8 h-8 rounded-full bg-slate-50 text-slate-300 flex items-center justify-center group-hover:bg-black group-hover:text-white transition-colors">
-              <ChevronLeft size={18} />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTimeSelect, onNext, onBack, isValid }: any) {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [loading, setLoading] = useState(true);
-  const [bookedSlots, setBookedSlots] = useState<Record<string, string[]>>({});
-  
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      const res = await api.fetchBookedSlots();
-      if (res.connected) {
-        setBookedSlots(res.slots);
-      }
-      setLoading(false);
-    }
-    load();
-  }, []);
-
-  const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
-  const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay(); // 0 is Sunday
-  
-  const generateCalendarDays = () => {
-    const days = [];
-    for (let i = 0; i < firstDayOfMonth; i++) {
-      days.push(null);
-    }
-    for (let i = 1; i <= daysInMonth; i++) {
-      days.push(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i));
-    }
-    return days;
-  };
-
-  const handleMonthChange = (dir: number) => {
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + dir, 1));
-  };
-
-  const slots = selectedDate ? generateTimeSlots(selectedDate, service.duration, bookedSlots) : [];
-
-  return (
-    <div className="space-y-6 animate-fade-in-up">
-      <div className="flex items-center gap-4">
-        <button onClick={onBack} className="p-2 -mr-2 rounded-full hover:bg-slate-100 text-slate-500"><ChevronRight /></button>
-        <h2 className="text-2xl font-bold">בחרי מועד</h2>
-      </div>
-
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-        <div className="flex items-center justify-between mb-6">
-          <button onClick={() => handleMonthChange(-1)} className="p-1 hover:bg-slate-100 rounded-full"><ChevronRight size={20} /></button>
-          <span className="font-bold text-lg">
-            {currentMonth.toLocaleString('he-IL', { month: 'long', year: 'numeric' })}
-          </span>
-          <button onClick={() => handleMonthChange(1)} className="p-1 hover:bg-slate-100 rounded-full"><ChevronLeft size={20} /></button>
-        </div>
-        
-        <div className="grid grid-cols-7 gap-1 text-center mb-2">
-          {['א','ב','ג','ד','ה','ו','ש'].map(d => <span key={d} className="text-xs text-slate-400 font-medium">{d}</span>)}
-        </div>
-        
-        <div className="grid grid-cols-7 gap-1">
-          {generateCalendarDays().map((date, i) => {
-            if (!date) return <div key={`empty-${i}`} />;
-            const isToday = new Date().toDateString() === date.toDateString();
-            const isSelected = selectedDate?.toDateString() === date.toDateString();
-            const isPast = date < new Date(new Date().setHours(0,0,0,0));
-            const isOffDay = !isWorkingDay(date);
-            const disabled = isPast || isOffDay;
             
-            return (
-              <button
-                key={i}
-                disabled={disabled}
-                onClick={() => onDateSelect(date)}
-                className={`
-                  aspect-square rounded-full flex items-center justify-center text-sm font-medium transition-all
-                  ${isSelected ? 'bg-black text-white shadow-md' : ''}
-                  ${!isSelected && !disabled ? 'hover:bg-slate-100 text-slate-700' : ''}
-                  ${isToday && !isSelected ? 'text-pink-600 font-bold' : ''}
-                  ${disabled ? 'opacity-30 cursor-not-allowed' : ''}
-                `}
-              >
-                {date.getDate()}
-              </button>
-            );
-          })}
+            <div className="space-y-2">
+                <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">Glow Studio</h1>
+                <p className="text-slate-500 text-lg">ברוכה הבאה לאפליקציית הריסים והגבות שלך</p>
+            </div>
+
+            <div className="w-full max-w-xs space-y-4 pt-8">
+                <button 
+                    onClick={onLogin}
+                    className="w-full bg-black text-white py-4 rounded-full font-bold shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all flex items-center justify-center gap-2"
+                >
+                    <LogIn size={20} />
+                    <span>כניסה לחשבון קיים</span>
+                </button>
+                <button 
+                    onClick={onRegister}
+                    className="w-full bg-white text-slate-900 border border-slate-200 py-4 rounded-full font-bold hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+                >
+                    <UserPlus size={20} />
+                    <span>הרשמה לחשבון חדש</span>
+                </button>
+            </div>
         </div>
-      </div>
-
-      {loading && (
-          <div className="text-center py-8 text-slate-400">
-              <Loader2 className="animate-spin mx-auto mb-2" />
-              <p className="text-sm">טוען זמינות...</p>
-          </div>
-      )}
-
-      {!loading && selectedDate && (
-        <div className="space-y-3 animate-fade-in">
-          <h3 className="font-bold text-slate-900">שעות פנויות ל{selectedDate.toLocaleDateString('he-IL')}</h3>
-          <div className="grid grid-cols-3 gap-3">
-            {slots.length > 0 ? slots.map((slot, idx) => (
-              <button
-                key={idx}
-                onClick={() => onTimeSelect(slot.time, !slot.available)}
-                className={`
-                  py-3 rounded-xl border text-sm font-medium transition-all relative overflow-hidden
-                  ${selectedTime === slot.time 
-                    ? (slot.available ? 'bg-black border-black text-white shadow-lg' : 'bg-slate-800 border-slate-800 text-white shadow-lg')
-                    : (slot.available 
-                        ? 'bg-white border-slate-200 hover:border-slate-400 text-slate-700' 
-                        : 'bg-slate-50 border-slate-100 text-slate-300'
-                      )
-                  }
-                `}
-              >
-                {slot.time}
-                {!slot.available && (
-                   <span className="absolute top-0 right-0 left-0 bg-slate-100 text-[9px] text-slate-400 py-0.5">תפוס</span>
-                )}
-              </button>
-            )) : (
-               <p className="col-span-3 text-center text-slate-500 py-4 bg-slate-50 rounded-xl">אין תורים פנויים ביום זה.</p>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className="pt-4">
-        <button
-          onClick={onNext}
-          disabled={!isValid}
-          className="w-full bg-black text-white py-4 rounded-xl font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
-        >
-          {selectedTime && slots.find(s => s.time === selectedTime && !s.available) ? 'הרשמה לרשימת המתנה' : 'המשך לפרטים'}
-          <ChevronLeft size={18} />
-        </button>
-      </div>
-    </div>
-  );
+    );
 }
 
-function ClientDetails({ name, phone, email, isWaitingList, isLoading, onChange, onNext, onBack }: any) {
+function HeroSection({ userEmail, userName, onStartBooking, onManageBookings, onViewRegistry }: { userEmail?: string, userName?: string, onStartBooking: () => void, onManageBookings: () => void, onViewRegistry: () => void }) {
+  const displayName = userName || (userEmail ? userEmail.split('@')[0] : 'אורחת');
+
   return (
-    <div className="space-y-6 animate-fade-in-up">
-      <div className="flex items-center gap-4">
-        <button onClick={onBack} className="p-2 -mr-2 rounded-full hover:bg-slate-100 text-slate-500"><ChevronRight /></button>
-        <h2 className="text-2xl font-bold">פרטים אישיים</h2>
-      </div>
+    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-8 animate-fade-in">
+        <div className="space-y-2 max-w-xs mx-auto">
+            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
+                היי, {displayName}! 👋
+            </h1>
+            <p className="text-slate-500">
+                מה נרצה לעשות היום?
+            </p>
+        </div>
+        
+        <div className="grid gap-4 w-full max-w-xs">
+            <button 
+                onClick={onStartBooking}
+                className="group bg-black text-white px-8 py-5 rounded-2xl text-lg font-bold shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all flex items-center justify-between"
+            >
+                <span>קביעת תור חדש</span>
+                <div className="bg-white/20 p-2 rounded-full">
+                    <ChevronLeft className="group-hover:-translate-x-1 transition-transform" />
+                </div>
+            </button>
 
-      <div className="space-y-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">שם מלא</label>
-          <input 
-            type="text" 
-            value={name}
-            onChange={(e) => onChange('clientName', e.target.value)}
-            className="w-full p-3.5 rounded-xl border border-slate-200 focus:border-black focus:ring-0 outline-none transition-all bg-slate-50 focus:bg-white"
-            placeholder="ישראל ישראלי"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">טלפון</label>
-          <input 
-            type="tel" 
-            value={phone}
-            onChange={(e) => onChange('clientPhone', e.target.value)}
-            className="w-full p-3.5 rounded-xl border border-slate-200 focus:border-black focus:ring-0 outline-none transition-all bg-slate-50 focus:bg-white"
-            placeholder="050-0000000"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">אימייל</label>
-          <input 
-            type="email" 
-            value={email}
-            onChange={(e) => onChange('clientEmail', e.target.value)}
-            className="w-full p-3.5 rounded-xl border border-slate-200 focus:border-black focus:ring-0 outline-none transition-all bg-slate-50 focus:bg-white"
-            placeholder="example@mail.com"
-          />
-        </div>
-      </div>
-      
-      {isWaitingList && (
-         <div className="bg-yellow-50 p-4 rounded-xl flex items-start gap-3 text-yellow-800 border border-yellow-100">
-           <AlertCircle className="shrink-0 mt-0.5" size={20} />
-           <p className="text-sm">שימי לב: את נרשמת לרשימת המתנה. במידה ויתפנה תור, ניצור איתך קשר.</p>
-         </div>
-      )}
+            <button 
+                onClick={onManageBookings}
+                className="group bg-white text-slate-900 border border-slate-200 px-8 py-5 rounded-2xl text-lg font-bold hover:border-slate-300 hover:bg-slate-50 transition-all flex items-center justify-between"
+            >
+                <span>התורים שלי</span>
+                <div className="bg-slate-100 text-slate-500 p-2 rounded-full group-hover:bg-white group-hover:text-black transition-colors">
+                    <List size={20} />
+                </div>
+            </button>
 
-      <button
-        onClick={onNext}
-        disabled={!name || !phone || !email || isLoading}
-        className="w-full bg-black text-white py-4 rounded-xl font-bold shadow-lg disabled:opacity-50 hover:bg-slate-800 transition-all flex items-center justify-center gap-2 mt-4"
-      >
-        {isLoading ? <Loader2 className="animate-spin" /> : (isWaitingList ? 'אשרי הרשמה להמתנה' : 'אשרי הזמנה')}
-      </button>
+             <button 
+                onClick={onViewRegistry}
+                className="group bg-slate-50 text-slate-700 border border-slate-200 px-8 py-4 rounded-2xl text-sm font-bold hover:bg-slate-100 transition-all flex items-center justify-between"
+            >
+                <span>מאגר לקוחות</span>
+                <Users size={18} className="text-slate-400 group-hover:text-slate-700" />
+            </button>
+        </div>
     </div>
   );
 }
+
+// ... Confirmation, WaitingListConfirmation, ServiceSelection, DateSelection remain mostly same ...
+// Modified ClientDetails to handle read-only email if provided
 
 function Confirmation({ state, onReset }: any) {
+  const [showSql, setShowSql] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const copySql = () => {
+      const sql = `create policy "Enable public insert" on "public"."appointments" for insert to public with check (true);`;
+      navigator.clipboard.writeText(sql);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div className="text-center py-10 space-y-6 animate-scale-in">
       <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto shadow-sm">
@@ -1191,6 +838,42 @@ function Confirmation({ state, onReset }: any) {
         <h2 className="text-3xl font-extrabold text-slate-900">איזה כיף! התור נקבע.</h2>
         <p className="text-slate-500">נשלח לך אישור ל-WhatsApp ולמייל.</p>
       </div>
+      
+      {state.isDemoMode && (
+          <div className="mx-4 bg-orange-50 border border-orange-200 text-orange-800 p-4 rounded-xl text-right">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="shrink-0 mt-0.5" size={20} />
+                <div className="flex-1">
+                    <p className="font-bold text-sm">מצב הדגמה (שגיאת הרשאות)</p>
+                    <p className="text-xs mt-1">
+                        הנתונים לא נשמרו בשרת כי חסרה מדיניות (Policy) המאפשרת למשתמשים לקבוע תורים.
+                    </p>
+                    <button 
+                        onClick={() => setShowSql(!showSql)}
+                        className="text-xs font-bold underline mt-2 hover:text-orange-900"
+                    >
+                        {showSql ? 'הסתר פתרון' : 'איך מתקנים?'}
+                    </button>
+                </div>
+              </div>
+              
+              {showSql && (
+                  <div className="mt-3 bg-white p-3 rounded-lg border border-orange-200 text-left relative" dir="ltr">
+                      <p className="text-[10px] text-slate-500 mb-1 font-sans">Run this in Supabase SQL Editor:</p>
+                      <code className="block text-[10px] font-mono bg-slate-50 p-2 rounded text-slate-700 break-all whitespace-pre-wrap">
+                        create policy "Enable insert for authenticated users" on "public"."appointments" for insert to authenticated with check (true);
+                      </code>
+                      <button 
+                        onClick={copySql}
+                        className="absolute top-2 right-2 p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700 transition"
+                        title="Copy SQL"
+                      >
+                         {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                      </button>
+                  </div>
+              )}
+          </div>
+      )}
       
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mx-4 inline-block text-right w-full max-w-sm">
         <div className="space-y-4">
@@ -1233,6 +916,16 @@ function WaitingListConfirmation({ state, onReset }: any) {
         <h2 className="text-3xl font-extrabold text-slate-900">נרשמת להמתנה</h2>
         <p className="text-slate-500">אנחנו נודיע לך ברגע שיתפנה מקום.</p>
       </div>
+
+      {state.isDemoMode && (
+          <div className="mx-4 bg-orange-50 border border-orange-200 text-orange-800 p-4 rounded-xl flex items-start gap-3 text-right">
+              <AlertTriangle className="shrink-0 mt-0.5" size={20} />
+              <div>
+                  <p className="font-bold text-sm">מצב הדגמה</p>
+                  <p className="text-xs mt-1">הנתונים לא נשמרו בשרת עקב מגבלת הרשאות (RLS Policy).</p>
+              </div>
+          </div>
+      )}
       
       <button 
         onClick={onReset}
@@ -1244,147 +937,616 @@ function WaitingListConfirmation({ state, onReset }: any) {
   );
 }
 
-function ManageLogin({ onLogin, onBack }: { onLogin: (email: string) => void, onBack: () => void }) {
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState("");
-    const [rememberMe, setRememberMe] = useState(false);
+function ServiceSelection({ services, onSelect, onBack }: { services: Service[], onSelect: (s: Service) => void, onBack: () => void }) {
+    return (
+        <div className="space-y-6 animate-slide-up">
+            <div className="flex items-center gap-2 mb-6">
+                <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition">
+                    <ChevronRight size={24} />
+                </button>
+                <h2 className="text-2xl font-bold">בחרי שירות</h2>
+            </div>
+            
+            <div className="grid gap-4">
+                {services.map(service => (
+                    <div 
+                        key={service.id}
+                        onClick={() => onSelect(service)}
+                        className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-slate-200 transition cursor-pointer flex justify-between items-center group"
+                    >
+                        <div>
+                            <h3 className="font-bold text-lg text-slate-900">{service.name}</h3>
+                            <p className="text-slate-500 text-sm mb-2">{service.description}</p>
+                            <div className="flex items-center gap-3 text-sm font-medium">
+                                <span className="text-slate-900">₪{service.price}</span>
+                                <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                                <span className="text-slate-500">{service.duration} דקות</span>
+                            </div>
+                        </div>
+                        <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 group-hover:bg-black group-hover:text-white transition-colors">
+                            <ChevronLeft size={20} />
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTimeSelect, onNext, onBack, isValid }: any) {
+    const [slots, setSlots] = useState<{ time: string; available: boolean; waitingCount: number }[]>([]);
+    const [loadingSlots, setLoadingSlots] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    // Generate next 14 days
+    const dates = Array.from({ length: 14 }, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() + i);
+        return d;
+    }).filter(d => isWorkingDay(d));
 
     useEffect(() => {
-        const savedEmail = localStorage.getItem("glow_user_email");
-        if (savedEmail) {
-            setEmail(savedEmail);
-            setRememberMe(true);
+        if (selectedDate && service) {
+            setLoadingSlots(true);
+            api.fetchBookedSlots().then(({ connected, slots: bookedSlots, error }) => {
+                if (!connected) {
+                    setError("שגיאת תקשורת עם השרת");
+                }
+                const generated = generateTimeSlots(selectedDate, service.duration, bookedSlots || {});
+                setSlots(generated);
+                setLoadingSlots(false);
+            });
         }
-    }, []);
-
-    const handleLogin = async () => {
-        setLoading(true);
-        setError("");
-        const res = await api.loginUser(email, password);
-        setLoading(false);
-        if (res.success) {
-            if (rememberMe) {
-                localStorage.setItem("glow_user_email", email);
-            } else {
-                localStorage.removeItem("glow_user_email");
-            }
-            onLogin(email);
-        } else {
-            setError(res.message || "שגיאה בהתחברות");
-        }
-    };
+    }, [selectedDate, service]);
 
     return (
-        <div className="space-y-8 animate-fade-in-up">
-            <div className="flex items-center gap-4">
-                <button onClick={onBack} className="p-2 -mr-2 rounded-full hover:bg-slate-100 text-slate-500"><ChevronRight /></button>
-                <h2 className="text-2xl font-bold">התחברות</h2>
+        <div className="space-y-6 animate-slide-up h-full flex flex-col">
+             <div className="flex items-center gap-2">
+                <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition">
+                    <ChevronRight size={24} />
+                </button>
+                <div>
+                    <h2 className="text-2xl font-bold">מתי נוח לך?</h2>
+                    <p className="text-slate-500 text-sm">עבור {service?.name}</p>
+                </div>
             </div>
-             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-6">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">אימייל</label>
-                  <input 
-                    type="email" 
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full p-3.5 rounded-xl border border-slate-200 focus:border-black focus:ring-0 outline-none transition-all bg-slate-50 focus:bg-white"
-                    placeholder="name@example.com"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">סיסמה (6 ספרות)</label>
-                  <input 
-                    type="password" 
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full p-3.5 rounded-xl border border-slate-200 focus:border-black focus:ring-0 outline-none transition-all bg-slate-50 focus:bg-white font-mono tracking-widest"
-                    maxLength={6}
-                  />
-                </div>
-                
-                <div className="flex items-center gap-2">
-                    <input 
-                        type="checkbox" 
-                        id="rememberMe"
-                        checked={rememberMe}
-                        onChange={(e) => setRememberMe(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 text-black focus:ring-black accent-black"
-                    />
-                    <label htmlFor="rememberMe" className="text-sm text-slate-600 cursor-pointer select-none">
-                        זכור אותי
-                    </label>
-                </div>
 
-                {error && <p className="text-red-500 text-sm">{error}</p>}
-                
+            {/* Date Scroller */}
+            <div className="flex gap-3 overflow-x-auto pb-4 pt-2 px-1 snap-x no-scrollbar">
+                {dates.map((date, i) => {
+                    const isSelected = selectedDate && getDateKey(selectedDate) === getDateKey(date);
+                    const dayName = date.toLocaleDateString('he-IL', { weekday: 'short' });
+                    const dayNum = date.getDate();
+                    return (
+                        <button
+                            key={i}
+                            onClick={() => onDateSelect(date)}
+                            className={`
+                                flex-shrink-0 w-16 h-20 rounded-2xl flex flex-col items-center justify-center gap-1 border transition-all snap-start
+                                ${isSelected 
+                                    ? 'bg-black text-white border-black shadow-lg scale-105' 
+                                    : 'bg-white text-slate-600 border-slate-100 hover:border-slate-300'
+                                }
+                            `}
+                        >
+                            <span className="text-xs opacity-80">{dayName}</span>
+                            <span className="text-xl font-bold">{dayNum}</span>
+                        </button>
+                    )
+                })}
+            </div>
+
+            {/* Time Slots */}
+            <div className="flex-1 overflow-y-auto min-h-[300px]">
+                {!selectedDate ? (
+                    <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
+                        <CalendarDays size={32} />
+                        <p>יש לבחור תאריך</p>
+                    </div>
+                ) : loadingSlots ? (
+                     <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
+                        <Loader2 className="animate-spin" size={32} />
+                        <p>טוען שעות פנויות...</p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-3 gap-3 content-start">
+                        {slots.map((slot, i) => {
+                            const isSelected = selectedTime === slot.time;
+                            return (
+                                <button
+                                    key={i}
+                                    onClick={() => onTimeSelect(slot.time, !slot.available)}
+                                    className={`
+                                        relative py-3 rounded-xl text-sm font-bold border transition-all
+                                        ${isSelected
+                                            ? slot.available 
+                                                ? 'bg-black text-white border-black shadow-md'
+                                                : 'bg-yellow-100 text-yellow-900 border-yellow-300 shadow-md'
+                                            : slot.available
+                                                ? 'bg-white text-slate-900 border-slate-200 hover:border-slate-900'
+                                                : 'bg-slate-50 text-slate-400 border-slate-100'
+                                        }
+                                    `}
+                                >
+                                    {slot.time}
+                                    {!slot.available && (
+                                        <span className="absolute -top-2 -left-2 bg-yellow-400 text-yellow-900 text-[10px] px-1.5 py-0.5 rounded-full font-bold shadow-sm">
+                                            המתנה
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })}
+                        {slots.length === 0 && (
+                            <div className="col-span-3 text-center py-10 text-slate-500">
+                                לא נמצאו תורים פנויים לתאריך זה.
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            <div className="sticky bottom-0 bg-[#FAFAFA] pt-4 border-t border-slate-100">
                 <button
-                    onClick={handleLogin}
-                    disabled={loading}
-                    className="w-full bg-black text-white py-4 rounded-xl font-bold shadow-lg disabled:opacity-50 hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
+                    disabled={!isValid}
+                    onClick={onNext}
+                    className="w-full bg-black text-white py-4 rounded-full font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transition-all"
                 >
-                    {loading ? <Loader2 className="animate-spin" /> : 'כניסה'}
+                    המשך
                 </button>
             </div>
         </div>
     );
 }
 
-function ManageList({ email, onBack }: { email: string, onBack: () => void }) {
-    const [bookings, setBookings] = useState<ClientBooking[]>([]);
-    const [loading, setLoading] = useState(true);
+function ClientDetails({ name, phone, email, isWaitingList, isLoading, error, onChange, onNext, onBack }: any) {
+    return (
+        <div className="space-y-6 animate-slide-up">
+            <div className="flex items-center gap-2">
+                <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition">
+                    <ChevronRight size={24} />
+                </button>
+                <h2 className="text-2xl font-bold">פרטים אישיים</h2>
+            </div>
 
-    useEffect(() => {
-        async function fetch() {
-            const data = await api.fetchClientBookings(email);
-            setBookings(data);
-            setLoading(false);
-        }
-        fetch();
-    }, [email]);
+            {isWaitingList && (
+                <div className="bg-yellow-50 text-yellow-800 p-4 rounded-xl flex items-start gap-3 text-sm">
+                    <Clock className="shrink-0 mt-0.5" size={16} />
+                    <div>
+                        <span className="font-bold block mb-1">רשימת המתנה</span>
+                        התור שבחרת תפוס. אם תמשיכי, ניכנס לרשימת המתנה ונודיע לך ברגע שיתפנה.
+                    </div>
+                </div>
+            )}
 
-    const handleCancel = async (booking: ClientBooking) => {
-        if (!window.confirm("בטוחה שאת רוצה לבטל את התור?")) return;
+            <div className="space-y-4">
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">שם מלא</label>
+                    <input 
+                        type="text" 
+                        value={name}
+                        onChange={(e) => onChange('clientName', e.target.value)}
+                        className="w-full p-4 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black transition"
+                        placeholder="ישראל ישראלי"
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">טלפון</label>
+                    <input 
+                        type="tel" 
+                        value={phone}
+                        onChange={(e) => onChange('clientPhone', e.target.value)}
+                        className="w-full p-4 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black transition"
+                        placeholder="050-0000000"
+                    />
+                </div>
+                 <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">אימייל</label>
+                    <input 
+                        type="email" 
+                        value={email}
+                        readOnly
+                        className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-slate-500 cursor-not-allowed"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1 mr-1">מחובר כ-{email}</p>
+                </div>
+            </div>
+
+            {error && (
+                <div className="text-red-500 text-sm text-center bg-red-50 p-3 rounded-lg">
+                    {error}
+                </div>
+            )}
+
+            <button
+                onClick={onNext}
+                disabled={!name || !phone || !email || isLoading}
+                className="w-full bg-black text-white py-4 rounded-full font-bold disabled:opacity-50 shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
+            >
+                {isLoading ? <Loader2 className="animate-spin" /> : isWaitingList ? 'הרשמה להמתנה' : 'אישור תור'}
+            </button>
+        </div>
+    );
+}
+
+function ManageLogin({ onLoginSuccess, onBack }: { onLoginSuccess: () => void, onBack: () => void }) {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
         setLoading(true);
-        await api.cancelBooking(booking, email);
-        const data = await api.fetchClientBookings(email);
-        setBookings(data);
+        setError(null);
+        
+        const res = await api.loginUser(email, password);
         setLoading(false);
+
+        if (res.success) {
+            onLoginSuccess();
+        } else {
+            setError(res.message || "שגיאה בכניסה");
+        }
     };
 
     return (
-        <div className="space-y-6 animate-fade-in-up">
-            <div className="flex items-center gap-4">
-                <button onClick={onBack} className="p-2 -mr-2 rounded-full hover:bg-slate-100 text-slate-500"><ChevronRight /></button>
+        <div className="space-y-6 animate-slide-up">
+             <div className="flex items-center gap-2">
+                <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition">
+                    <ChevronRight size={24} />
+                </button>
+                <h2 className="text-2xl font-bold">כניסה</h2>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+                 <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">אימייל</label>
+                    <input 
+                        type="email" 
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                        className="w-full p-4 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black transition"
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">סיסמה</label>
+                    <input 
+                        type="password" 
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        className="w-full p-4 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black transition"
+                    />
+                </div>
+
+                {error && <div className="text-red-500 text-sm">{error}</div>}
+
+                <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-black text-white py-4 rounded-full font-bold disabled:opacity-50 shadow-lg hover:shadow-xl transition-all flex items-center justify-center"
+                >
+                    {loading ? <Loader2 className="animate-spin" /> : 'כניסה'}
+                </button>
+            </form>
+        </div>
+    );
+}
+
+function Register({ onRegisterSuccess, onBack }: { onRegisterSuccess: () => void, onBack: () => void }) {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [fullName, setFullName] = useState('');
+    const [phone, setPhone] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        setError(null);
+        
+        const res = await api.registerUser(email, password, fullName, phone);
+        setLoading(false);
+
+        if (res.success) {
+            if (res.requiresConfirmation) {
+                alert("הרשמה בוצעה בהצלחה! נשלח אליך מייל לאימות החשבון. יש לאשר אותו לפני הכניסה.");
+                onBack(); // Go back to welcome or login
+            } else {
+                onRegisterSuccess();
+            }
+        } else {
+            setError(res.message || "שגיאה בהרשמה");
+        }
+    };
+
+     return (
+        <div className="space-y-6 animate-slide-up">
+             <div className="flex items-center gap-2">
+                <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition">
+                    <ChevronRight size={24} />
+                </button>
+                <h2 className="text-2xl font-bold">הרשמה</h2>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+                 <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">שם מלא</label>
+                    <div className="relative">
+                        <User className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                        <input 
+                            type="text" 
+                            value={fullName}
+                            onChange={(e) => setFullName(e.target.value)}
+                            required
+                            className="w-full p-4 pr-12 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black transition"
+                            placeholder="ישראל ישראלי"
+                        />
+                    </div>
+                </div>
+
+                 <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">טלפון</label>
+                    <div className="relative">
+                        <Phone className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                        <input 
+                            type="tel" 
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
+                            required
+                            className="w-full p-4 pr-12 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black transition"
+                            placeholder="050-1234567"
+                        />
+                    </div>
+                </div>
+
+                 <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">אימייל</label>
+                    <input 
+                        type="email" 
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                        className="w-full p-4 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black transition"
+                        placeholder="example@mail.com"
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">סיסמה</label>
+                    <input 
+                        type="password" 
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        minLength={6}
+                        className="w-full p-4 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black transition"
+                        placeholder="******"
+                    />
+                    <p className="text-xs text-slate-400 mt-1">מינימום 6 תווים</p>
+                </div>
+
+                {error && <div className="text-red-500 text-sm">{error}</div>}
+
+                <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-black text-white py-4 rounded-full font-bold disabled:opacity-50 shadow-lg hover:shadow-xl transition-all flex items-center justify-center"
+                >
+                    {loading ? <Loader2 className="animate-spin" /> : 'סיום הרשמה'}
+                </button>
+            </form>
+        </div>
+    );
+}
+
+function ManageList({ userId, onBack }: { userId: string, onBack: () => void }) {
+    const [bookings, setBookings] = useState<ClientBooking[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const load = async () => {
+        setLoading(true);
+        const data = await api.fetchClientBookings(userId);
+        setBookings(data);
+        setLoading(false);
+    }
+
+    useEffect(() => {
+        load();
+    }, [userId]);
+
+    const handleCancel = async (booking: ClientBooking) => {
+        if (!confirm('האם לבטל את התור?')) return;
+        if (booking.id) {
+             await api.cancelBooking(booking.id);
+             load();
+        }
+    }
+
+    return (
+        <div className="space-y-6 animate-slide-up">
+             <div className="flex items-center gap-2">
+                <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition">
+                    <ChevronRight size={24} />
+                </button>
                 <h2 className="text-2xl font-bold">התורים שלי</h2>
             </div>
             
             {loading ? (
-                <div className="text-center py-10"><Loader2 className="animate-spin mx-auto text-pink-500" /></div>
+                <div className="flex justify-center p-10"><Loader2 className="animate-spin" /></div>
             ) : bookings.length === 0 ? (
-                <div className="text-center py-10 bg-white rounded-xl border border-slate-100 shadow-sm">
-                   <p className="text-slate-500">אין לך תורים עתידיים.</p>
+                <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-200">
+                    <Calendar size={48} className="mx-auto text-slate-300 mb-4" />
+                    <p className="text-slate-500 font-medium">עדיין לא קבעת תורים</p>
                 </div>
             ) : (
                 <div className="space-y-4">
-                    {bookings.map((b, i) => (
-                        <div key={i} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center">
-                            <div>
-                                <h3 className="font-bold text-slate-900">{b.service}</h3>
-                                <div className="flex items-center gap-2 text-slate-500 text-sm mt-1">
-                                    <Calendar size={14} />
-                                    <span>{b.date}</span>
-                                    <Clock size={14} className="ml-1" />
-                                    <span>{b.time}</span>
+                    {bookings.map((b) => (
+                        <div key={b.id} className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center group hover:border-slate-200 transition">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center text-slate-900 font-bold text-sm border border-slate-100">
+                                    {b.date.split('-')[2]}
+                                </div>
+                                <div>
+                                    <div className="font-bold text-slate-900">{b.service}</div>
+                                    <div className="text-slate-500 text-sm flex items-center gap-2">
+                                        <Clock size={12} />
+                                        <span>{b.time}</span>
+                                        <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                                        <span>{b.date}</span>
+                                    </div>
                                 </div>
                             </div>
                             <button 
                                 onClick={() => handleCancel(b)}
-                                className="text-red-500 bg-red-50 p-2.5 rounded-xl hover:bg-red-100 transition-colors"
+                                className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all"
+                                title="ביטול תור"
                             >
-                                <Trash2 size={18} />
+                                <Trash2 size={20} />
                             </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    )
+}
+
+function ClientRegistry({ onBack }: { onBack: () => void }) {
+    const [clients, setClients] = useState<ClientProfile[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [showSql, setShowSql] = useState(false);
+    const [copied, setCopied] = useState(false);
+    const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
+
+    useEffect(() => {
+        const load = async () => {
+            setLoading(true);
+            const { success, clients, error } = await api.fetchClients();
+            if (success) {
+                setClients(clients);
+                setError(null);
+            } else {
+                setError(error || "שגיאה בטעינת לקוחות");
+            }
+            setLoading(false);
+        };
+        load();
+    }, []);
+
+    const togglePassword = (id: string) => {
+        setVisiblePasswords(prev => ({ ...prev, [id]: !prev[id] }));
+    };
+
+    const copySql = () => {
+        const sql = `create table if not exists public.clients (
+  id uuid references auth.users not null primary key,
+  full_name text,
+  phone text,
+  email text,
+  password text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+create policy "Enable insert for everyone" on public.clients for insert with check (true);
+create policy "Enable select for everyone" on public.clients for select using (true);`;
+        navigator.clipboard.writeText(sql);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+        <div className="space-y-6 animate-slide-up">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition">
+                        <ChevronRight size={24} />
+                    </button>
+                    <h2 className="text-2xl font-bold">מאגר לקוחות</h2>
+                </div>
+                <button 
+                    onClick={() => setShowSql(!showSql)}
+                    className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full hover:bg-slate-200 transition flex items-center gap-1"
+                >
+                    <Database size={12} />
+                    <span>{showSql ? 'הסתר הגדרות' : 'הגדרת מסד נתונים'}</span>
+                </button>
+            </div>
+
+            {showSql && (
+                <div className="bg-slate-900 text-slate-300 p-4 rounded-xl text-left text-xs font-mono relative overflow-hidden">
+                    <pre className="whitespace-pre-wrap break-all">
+{`create table if not exists public.clients (
+  id uuid references auth.users not null primary key,
+  full_name text,
+  phone text,
+  email text,
+  password text, -- Added for demo purposes
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+create policy "Enable insert for everyone" on public.clients for insert with check (true);
+create policy "Enable select for everyone" on public.clients for select using (true);`}
+                    </pre>
+                    <button 
+                        onClick={copySql}
+                        className="absolute top-2 right-2 p-2 bg-slate-800 hover:bg-slate-700 rounded text-white transition"
+                    >
+                         {copied ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
+                    </button>
+                    <div className="mt-2 text-slate-500 border-t border-slate-800 pt-2">
+                        יש להריץ פקודה זו ב-SQL Editor ב-Supabase כדי ליצור את טבלת הלקוחות.
+                    </div>
+                </div>
+            )}
+
+            {loading ? (
+                <div className="flex justify-center p-10"><Loader2 className="animate-spin" /></div>
+            ) : error ? (
+                <div className="bg-red-50 text-red-800 p-4 rounded-xl text-center">
+                    <p className="font-bold mb-2">לא ניתן לטעון את מאגר הלקוחות</p>
+                    <p className="text-sm">{error}</p>
+                    <p className="text-xs mt-2">ייתכן שהטבלה clients טרם נוצרה ב-Supabase.</p>
+                </div>
+            ) : clients.length === 0 ? (
+                 <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-200">
+                    <Users size={48} className="mx-auto text-slate-300 mb-4" />
+                    <p className="text-slate-500 font-medium">עדיין אין לקוחות רשומים במאגר</p>
+                </div>
+            ) : (
+                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                    {clients.map((client, i) => (
+                        <div key={client.id} className={`p-4 flex items-center justify-between group hover:bg-slate-50 transition ${i !== clients.length - 1 ? 'border-b border-slate-50' : ''}`}>
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 font-bold">
+                                    {client.full_name.charAt(0)}
+                                </div>
+                                <div>
+                                    <div className="font-bold text-slate-900">{client.full_name}</div>
+                                    <div className="text-slate-500 text-xs">{client.email}</div>
+                                </div>
+                            </div>
+                            <div className="text-right flex flex-col items-end">
+                                <div className="text-slate-900 font-mono text-sm">{client.phone}</div>
+                                
+                                {client.password && (
+                                    <div className="flex items-center gap-1 mt-1 text-slate-400 text-xs">
+                                        <button onClick={() => togglePassword(client.id)} className="hover:text-slate-600">
+                                            {visiblePasswords[client.id] ? <EyeOff size={12} /> : <Eye size={12} />}
+                                        </button>
+                                        <span className="font-mono">
+                                            {visiblePasswords[client.id] ? client.password : '••••••'}
+                                        </span>
+                                    </div>
+                                )}
+                                
+                                <div className="text-slate-400 text-[10px] mt-1">
+                                    {new Date(client.created_at).toLocaleDateString('he-IL')}
+                                </div>
+                            </div>
                         </div>
                     ))}
                 </div>
@@ -1394,95 +1556,127 @@ function ManageList({ email, onBack }: { email: string, onBack: () => void }) {
 }
 
 function AIConsultant({ onClose }: { onClose: () => void }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: "model", text: "היי! אני העוזרת החכמה של Glow Studio. איך אוכל לעזור?" }
-  ]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+    const [messages, setMessages] = useState<ChatMessage[]>([
+        { role: 'model', text: 'היי! אני גלואו בוט, העוזרת החכמה של הסטודיו. איך אני יכולה לעזור לך היום? 😊' }
+    ]);
+    const [input, setInput] = useState('');
+    const [isThinking, setIsThinking] = useState(false);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    };
 
-  const handleSend = async () => {
-    if (!input.trim() || loading) return;
-    const userMsg = input;
-    setInput("");
-    setMessages(prev => [...prev, { role: "user", text: userMsg }]);
-    setLoading(true);
+    useEffect(() => {
+        scrollToBottom();
+    }, [messages]);
 
-    try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const chat = ai.chats.create({
-            model: "gemini-2.5-flash",
-            history: messages.map(m => ({
-                role: m.role,
-                parts: [{ text: m.text }]
-            }))
-        });
+    const sendMessage = async () => {
+        if (!input.trim()) return;
+        const userMsg = input;
+        setInput('');
+        setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+        setIsThinking(true);
 
-        const result = await chat.sendMessage({ message: userMsg });
-        const text = result.text;
-        setMessages(prev => [...prev, { role: "model", text }]);
-    } catch (e) {
-        console.error(e);
-        setMessages(prev => [...prev, { role: "model", text: "אופס, נתקלתי בבעיה. נסי שוב מאוחר יותר." }]);
-    } finally {
-        setLoading(false);
-    }
-  };
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const model = "gemini-2.5-flash"; 
+            const response = await ai.models.generateContent({
+                model,
+                contents: [
+                    {
+                        role: 'user',
+                        parts: [
+                            { text: `אתה עוזר וירטואלי של סטודיו לקוסמטיקה בשם Glow Studio.
+                            שעות הפעילות: ימים א-ה 09:00 עד 18:00.
+                            השירותים: גבות (100 ש"ח), ריסים (180 ש"ח), הרמת גבות (220 ש"ח), הרמת ריסים (250 ש"ח).
+                            תענה בצורה נחמדה, קצרה ובעברית.
+                            
+                            השאלה של הלקוח: ${userMsg}` }
+                        ]
+                    }
+                ]
+            });
 
-  return (
-    <div className="fixed bottom-20 left-4 z-50 w-80 md:w-96 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[500px] animate-scale-in">
-      <div className="bg-black text-white p-4 flex justify-between items-center">
-        <div className="flex items-center gap-2">
-            <Sparkles size={16} className="text-pink-300" />
-            <span className="font-bold">Glow AI</span>
+            const text = response.text || "סליחה, לא הצלחתי להבין. אפשר לנסות שוב?";
+            setMessages(prev => [...prev, { role: 'model', text }]);
+
+        } catch (error) {
+            console.error(error);
+            setMessages(prev => [...prev, { role: 'model', text: "אופס, הייתה לי בעיה קטנה. נסי שוב עוד רגע." }]);
+        } finally {
+            setIsThinking(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/20 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white w-full sm:w-[400px] h-[80vh] sm:h-[600px] sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-slide-up">
+                {/* Header */}
+                <div className="bg-slate-900 text-white p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-gradient-to-tr from-purple-400 to-pink-400 rounded-full flex items-center justify-center">
+                            <Sparkles size={16} className="text-white" />
+                        </div>
+                        <span className="font-bold">Glow Bot</span>
+                    </div>
+                    <button onClick={onClose} className="text-white/80 hover:text-white transition">
+                        <X size={20} />
+                    </button>
+                </div>
+
+                {/* Messages */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
+                    {messages.map((msg, idx) => (
+                        <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${
+                                msg.role === 'user' 
+                                    ? 'bg-black text-white rounded-br-none' 
+                                    : 'bg-white text-slate-800 shadow-sm border border-slate-100 rounded-bl-none'
+                            }`}>
+                                {msg.text}
+                            </div>
+                        </div>
+                    ))}
+                    {isThinking && (
+                        <div className="flex justify-start">
+                             <div className="bg-white p-3 rounded-2xl rounded-bl-none shadow-sm border border-slate-100 flex gap-1">
+                                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></span>
+                                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-75"></span>
+                                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-150"></span>
+                            </div>
+                        </div>
+                    )}
+                    <div ref={messagesEndRef} />
+                </div>
+
+                {/* Input */}
+                <div className="p-3 bg-white border-t border-slate-100 flex gap-2">
+                    <input 
+                        type="text" 
+                        value={input}
+                        onChange={e => setInput(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && sendMessage()}
+                        placeholder="תשאלי אותי משהו..."
+                        className="flex-1 bg-slate-50 border border-slate-200 rounded-full px-4 py-2 text-sm focus:outline-none focus:border-black transition"
+                    />
+                    <button 
+                        onClick={sendMessage}
+                        disabled={!input.trim() || isThinking}
+                        className="w-10 h-10 bg-black text-white rounded-full flex items-center justify-center hover:bg-slate-800 disabled:opacity-50 transition"
+                    >
+                        <Send size={18} />
+                    </button>
+                </div>
+            </div>
         </div>
-        <button onClick={onClose}><X size={18} /></button>
-      </div>
-      
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
-        {messages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] p-3 rounded-xl text-sm ${m.role === 'user' ? 'bg-black text-white rounded-br-none' : 'bg-white shadow-sm border border-slate-200 text-slate-800 rounded-bl-none'}`}>
-                    {m.text}
-                </div>
-            </div>
-        ))}
-        {loading && (
-            <div className="flex justify-start">
-                <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-200 rounded-bl-none flex gap-1">
-                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></span>
-                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-75"></span>
-                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-150"></span>
-                </div>
-            </div>
-        )}
-        <div ref={chatEndRef} />
-      </div>
-
-      <div className="p-3 bg-white border-t border-slate-100 flex gap-2">
-        <input 
-            type="text" 
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSend()}
-            placeholder="כתבי הודעה..."
-            className="flex-1 bg-slate-100 rounded-full px-4 py-2 text-sm outline-none focus:ring-1 focus:ring-black"
-        />
-        <button 
-            onClick={handleSend}
-            disabled={loading || !input.trim()}
-            className="bg-black text-white p-2 rounded-full hover:bg-slate-800 disabled:opacity-50"
-        >
-            <Send size={18} />
-        </button>
-      </div>
-    </div>
-  );
+    )
 }
 
-const root = createRoot(document.getElementById("root")!);
-root.render(<App />);
+const rootElement = document.getElementById("root");
+if (rootElement) {
+    const root = createRoot(rootElement);
+    root.render(<App />);
+} else {
+    console.error("Failed to find the root element");
+}
