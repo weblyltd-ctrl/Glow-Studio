@@ -8,8 +8,8 @@ export const BUSINESS_INFO = {
   name: "LS Eyebrow Artist",
   phone: "972502233373",
   displayPhone: "050-2233373",
-  address: "דיזינגוף 100, תל אביב",
-  mapUrl: "https://maps.app.goo.gl/example"
+  address: "קרית עקרון",
+  mapUrl: "https://www.google.com/maps/search/?api=1&query=קרית+עקרון"
 };
 
 export const BUSINESS_HOURS = {

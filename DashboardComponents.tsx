@@ -96,24 +96,40 @@ export function AdminAuth({ onSuccess, onBack }: { onSuccess: () => void, onBack
 export function ManageList({ userId, onBack }: { userId: string, onBack: () => void }) {
     const [bookings, setBookings] = useState<ClientBooking[]>([]);
     const [loading, setLoading] = useState(true);
-    const [deletingId, setDeletingId] = useState<string | number | null>(null);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
 
     const load = async () => { 
         setLoading(true); 
-        const data = await api.fetchClientBookings(userId);
-        setBookings(data); 
-        setLoading(false); 
+        try {
+            const data = await api.fetchClientBookings(userId);
+            setBookings(Array.isArray(data) ? data : []); 
+        } catch (e) {
+            console.error("Error loading bookings:", e);
+        } finally {
+            setLoading(false); 
+        }
     }
 
     useEffect(() => { load(); }, [userId]);
 
     const handleCancel = async (bookingId: string | number) => { 
-        setDeletingId(bookingId);
-        const res = await api.cancelBooking(bookingId); 
-        if (res.success) {
-            setBookings(prev => prev.filter(b => b.id !== bookingId));
+        if (deletingId) return; // Prevent multiple clicks
+        const idStr = String(bookingId);
+        setDeletingId(idStr);
+        
+        try {
+            const res = await api.cancelBooking(idStr); 
+            if (res.success) {
+                setBookings(prev => prev.filter(b => String(b.id) !== idStr));
+            } else {
+                alert(`לא ניתן היה לבטל את התור: ${res.error || 'שגיאה לא ידועה'}`);
+            }
+        } catch (e: any) {
+            console.error("Cancellation error:", e);
+            alert("קרתה שגיאת תקשורת בעת ניסיון הביטול.");
+        } finally {
+            setDeletingId(null);
         }
-        setDeletingId(null);
     }
 
     return (
@@ -125,17 +141,17 @@ export function ManageList({ userId, onBack }: { userId: string, onBack: () => v
             {loading ? <div className="flex justify-center p-20"><Loader2 className="animate-spin text-black" size={32} /></div> : (
                 <div className="space-y-4">
                     {bookings.length === 0 ? (
-                        <div className="text-center py-24 text-slate-300 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
+                        <div className="text-center py-24 text-slate-300 bg-slate-50 rounded-3xl border border-dashed border-slate-200 animate-fade-in">
                             <Calendar className="mx-auto mb-2 opacity-20" size={32} />
                             <p className="text-xs font-bold uppercase tracking-widest">אין תורים עתידיים</p>
                         </div>
                     ) : bookings.map((b) => (
-                        <div key={b.id} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center group hover:border-slate-200 transition-all">
+                        <div key={String(b.id)} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center group hover:border-slate-200 transition-all animate-slide-up">
                             <div className="space-y-1">
                                 <div className="font-bold text-slate-900">{b.service}</div>
                                 <div className="flex items-center gap-2 text-slate-400 text-[11px] font-bold uppercase tracking-wider">
                                     <Calendar size={12} />
-                                    <span>{new Date(b.date).toLocaleDateString('he-IL')}</span>
+                                    <span>{b.date ? new Date(b.date).toLocaleDateString('he-IL') : 'תאריך חסר'}</span>
                                     <span className="w-1 h-1 bg-slate-200 rounded-full"></span>
                                     <Clock size={12} />
                                     <span>{b.time}</span>
@@ -143,12 +159,12 @@ export function ManageList({ userId, onBack }: { userId: string, onBack: () => v
                             </div>
                             <button 
                                 onClick={() => handleCancel(b.id)} 
-                                disabled={deletingId === b.id}
-                                className="flex items-center gap-1.5 text-red-500 hover:text-red-700 font-bold text-[10px] uppercase tracking-widest px-3 py-2 bg-red-50 rounded-full transition-all disabled:opacity-50"
+                                disabled={!!deletingId}
+                                className="flex items-center gap-1.5 text-red-500 hover:text-red-700 font-bold text-[10px] uppercase tracking-widest px-3 py-2 bg-red-50 rounded-full transition-all disabled:opacity-30"
                                 title="ביטול מיידי"
                             >
-                                {deletingId === b.id ? <Loader2 className="animate-spin" size={14} /> : <XCircle size={14} />}
-                                <span>ביטול תור</span>
+                                {deletingId === String(b.id) ? <Loader2 className="animate-spin" size={14} /> : <XCircle size={14} />}
+                                <span>{deletingId === String(b.id) ? 'מבטל...' : 'ביטול תור'}</span>
                             </button>
                         </div>
                     ))}
@@ -166,7 +182,7 @@ export function ClientRegistry({ onBack }: { onBack: () => void }) {
     const [isLoading, setIsLoading] = useState(true);
     const [newPassword, setNewPassword] = useState('');
     const [updating, setUpdating] = useState(false);
-    const [deletingBookingId, setDeletingBookingId] = useState<string | number | null>(null);
+    const [deletingBookingId, setDeletingBookingId] = useState<string | null>(null);
     const [msg, setMsg] = useState<{type:'success'|'error', text:string, isRls?:boolean}|null>(null);
     const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
     const [copied, setCopied] = useState(false);
@@ -183,9 +199,9 @@ export function ClientRegistry({ onBack }: { onBack: () => void }) {
                 api.fetchAllBookings(),
                 api.fetchSettings()
             ]);
-            if (clientsRes.success) setClients(clientsRes.clients);
-            setAllBookings(bookingsData);
-            setStudioSettings(settingsData);
+            if (clientsRes.success) setClients(Array.isArray(clientsRes.clients) ? clientsRes.clients : []);
+            setAllBookings(Array.isArray(bookingsData) ? bookingsData : []);
+            setStudioSettings(settingsData || {});
         } catch (e) {
             console.error("Load registry data error:", e);
         } finally {
@@ -194,12 +210,23 @@ export function ClientRegistry({ onBack }: { onBack: () => void }) {
     };
 
     const handleAdminDeleteBooking = async (bookingId: string | number) => {
-        setDeletingBookingId(bookingId);
-        const res = await api.cancelBooking(bookingId);
-        if (res.success) {
-            setAllBookings(prev => prev.filter(b => b.id !== bookingId));
+        if (deletingBookingId) return;
+        const idStr = String(bookingId);
+        setDeletingBookingId(idStr);
+        
+        try {
+            const res = await api.cancelBooking(idStr);
+            if (res.success) {
+                setAllBookings(prev => prev.filter(b => String(b.id) !== idStr));
+            } else {
+                alert(`מחיקת תור נכשלה: ${res.error || 'שגיאה בשרת'}`);
+            }
+        } catch (e: any) {
+            console.error("Admin delete error:", e);
+            alert("שגיאת תקשורת בעת מחיקת התור.");
+        } finally {
+            setDeletingBookingId(null);
         }
-        setDeletingBookingId(null);
     }
 
     useEffect(() => { loadData(); }, []);
@@ -263,11 +290,11 @@ export function ClientRegistry({ onBack }: { onBack: () => void }) {
                         {allBookings.length === 0 ? (
                             <div className="p-20 text-center text-slate-300 italic text-xs uppercase tracking-widest">לא נמצאו תורים במערכת</div>
                         ) : allBookings.map((b) => (
-                            <div key={b.id} className="p-4 flex justify-between items-center hover:bg-slate-50 transition group">
+                            <div key={String(b.id)} className="p-4 flex justify-between items-center hover:bg-slate-50 transition group">
                                 <div className="flex items-center gap-4">
                                     <div className="w-10 h-10 bg-slate-900 text-white rounded-xl flex flex-col items-center justify-center text-[10px] font-bold leading-tight">
-                                        <span>{b.date.split('-')[2]}</span>
-                                        <span className="opacity-50 text-[8px]">{b.date.split('-')[1]}</span>
+                                        <span>{b.date ? b.date.split('-')[2] : '??'}</span>
+                                        <span className="opacity-50 text-[8px]">{b.date ? b.date.split('-')[1] : '??'}</span>
                                     </div>
                                     <div>
                                         <div className="font-bold text-sm text-slate-900">{b.client_name}</div>
@@ -278,11 +305,11 @@ export function ClientRegistry({ onBack }: { onBack: () => void }) {
                                     {b.client_phone && <a href={`tel:${b.client_phone}`} className="p-2 bg-slate-100 text-slate-600 rounded-full hover:bg-black hover:text-white transition shadow-sm"><Phone size={14} /></a>}
                                     <button 
                                         onClick={() => handleAdminDeleteBooking(b.id)} 
-                                        disabled={deletingBookingId === b.id}
-                                        className="p-2 bg-red-50 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition shadow-sm"
+                                        disabled={!!deletingBookingId}
+                                        className="p-2 bg-red-50 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition shadow-sm disabled:opacity-30"
                                         title="מחיקה מיידית"
                                     >
-                                        {deletingBookingId === b.id ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />}
+                                        {deletingBookingId === String(b.id) ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />}
                                     </button>
                                 </div>
                             </div>
@@ -302,7 +329,7 @@ export function ClientRegistry({ onBack }: { onBack: () => void }) {
                                             <div className="text-slate-400 text-[10px] font-medium">{c.email}</div>
                                         </div>
                                     </div>
-                                    <div className="text-[9px] bg-slate-100 px-2 py-1 rounded-full text-slate-500 font-bold uppercase tracking-wider">{new Date(c.created_at).toLocaleDateString()}</div>
+                                    <div className="text-[9px] bg-slate-100 px-2 py-1 rounded-full text-slate-500 font-bold uppercase tracking-wider">{c.created_at ? new Date(c.created_at).toLocaleDateString() : 'N/A'}</div>
                                 </div>
                                 <div className="flex items-center justify-between bg-white border border-slate-100 p-3 rounded-2xl shadow-sm">
                                     <div className="flex items-center gap-4">

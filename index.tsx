@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { Loader2, LogOut, MessageCircle, X } from "lucide-react";
 import { supabase, api } from "./api";
@@ -28,53 +28,62 @@ function App() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
 
-  const syncUserProfile = async (user: any) => {
+  const syncUserProfile = useCallback(async (user: any) => {
     if (!user) {
         setState(prev => ({ ...prev, currentUser: null, clientName: "", clientPhone: "", clientEmail: "" }));
         return;
     }
     
-    const profile = await api.fetchUserProfile(user.id);
-    
-    if (profile) {
-        const name = profile.full_name || user.user_metadata?.full_name || user.user_metadata?.name || "";
-        const phone = profile.phone || user.user_metadata?.phone || "";
-
-        setState(prev => ({ 
-            ...prev, 
-            currentUser: user,
-            clientEmail: user.email || "",
-            clientName: name,
-            clientPhone: phone,
-            step: (["welcome", "login", "register", "admin-auth"].includes(prev.step) ? "home" : prev.step) as AppointmentState["step"]
-        }));
-    } else {
-        const metaName = user.user_metadata?.full_name || user.user_metadata?.name || "";
-        const metaPhone = user.user_metadata?.phone || "";
+    try {
+        const profile = await api.fetchUserProfile(user.id);
         
-        if (metaName && metaPhone) {
-            await supabase.from('clients').upsert([{ id: user.id, full_name: metaName, phone: metaPhone, email: user.email }]);
-            setState(prev => ({ ...prev, currentUser: user, clientName: metaName, clientPhone: metaPhone, clientEmail: user.email, step: "home" }));
+        if (profile) {
+            const name = profile.full_name || user.user_metadata?.full_name || user.user_metadata?.name || "";
+            const phone = profile.phone || user.user_metadata?.phone || "";
+
+            setState(prev => ({ 
+                ...prev, 
+                currentUser: user,
+                clientEmail: user.email || "",
+                clientName: name,
+                clientPhone: phone,
+                step: (["welcome", "login", "register", "admin-auth"].includes(prev.step) ? "home" : prev.step) as AppointmentState["step"]
+            }));
         } else {
-            if (state.step === "register") {
-            } else {
-                await api.logout();
-                setState(prev => ({ ...prev, currentUser: null, step: "welcome" }));
+            const metaName = user.user_metadata?.full_name || user.user_metadata?.name || "";
+            const metaPhone = user.user_metadata?.phone || "";
+            
+            if (metaName && metaPhone) {
+                await supabase.from('clients').upsert([{ id: user.id, full_name: metaName, phone: metaPhone, email: user.email }]);
+                setState(prev => ({ ...prev, currentUser: user, clientName: metaName, clientPhone: metaPhone, clientEmail: user.email, step: "home" }));
             }
         }
+    } catch (e) {
+        console.error("Sync profile error:", e);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    (supabase.auth as any).getSession().then(({ data: { session } }: any) => {
-        if (session?.user) {
-            syncUserProfile(session.user).finally(() => setIsLoadingSession(false));
-        } else {
-            setIsLoadingSession(false);
+    let mounted = true;
+
+    const initSession = async () => {
+        try {
+            const { data: { session } } = await (supabase.auth as any).getSession();
+            if (session?.user && mounted) {
+                await syncUserProfile(session.user);
+            }
+        } catch (e) {
+            console.error("Auth init error:", e);
+        } finally {
+            if (mounted) setIsLoadingSession(false);
         }
-    });
+    };
+
+    initSession();
 
     const { data: { subscription } } = (supabase.auth as any).onAuthStateChange(async (event: string, session: any) => {
+         if (!mounted) return;
+         
          if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
              if (session?.user) {
                  await syncUserProfile(session.user);
@@ -91,13 +100,16 @@ function App() {
          }
     });
 
-    return () => subscription.unsubscribe();
-  }, [state.step]);
+    return () => {
+        mounted = false;
+        subscription.unsubscribe();
+    };
+  }, [syncUserProfile]);
 
   const resetBookingFlow = () => {
     setState(prev => ({
       ...prev,
-      step: state.currentUser ? "home" : "welcome",
+      step: prev.currentUser ? "home" : "welcome",
       service: null,
       date: null,
       time: null,
@@ -115,29 +127,34 @@ function App() {
   const handleBookingSubmit = async () => {
     setIsSubmitting(true);
     setSubmissionError(null);
-    const result = await api.saveBooking(state);
-    setIsSubmitting(false);
-    if (result.success) {
-      if (result.isDemo) setState(prev => ({ ...prev, isDemoMode: true }));
-      nextStep(state.isWaitingList ? "waiting-list-confirmed" : "confirmation");
-    } else {
-      setSubmissionError(result.message || "אירעה שגיאה.");
+    try {
+        const result = await api.saveBooking(state);
+        if (result.success) {
+          if (result.isDemo) setState(prev => ({ ...prev, isDemoMode: true }));
+          nextStep(state.isWaitingList ? "waiting-list-confirmed" : "confirmation");
+        } else {
+          setSubmissionError(result.message || "אירעה שגיאה בשמירת התור.");
+        }
+    } catch (e) {
+        setSubmissionError("שגיאת תקשורת.");
+    } finally {
+        setIsSubmitting(false);
     }
   };
 
   if (isLoadingSession) {
       return (
-          <div className="min-h-screen flex items-center justify-center bg-white">
+          <div className="min-h-screen flex items-center justify-center bg-[#fcf9f7]">
               <Loader2 className="animate-spin text-black" size={32} />
           </div>
       )
   }
 
   return (
-    <div className="min-h-screen bg-white text-slate-900 font-sans pb-20 md:pb-0 relative overflow-x-hidden">
+    <div className="min-h-screen bg-[#fcf9f7] text-slate-900 font-sans pb-20 md:pb-0 relative overflow-x-hidden">
       <div className="relative z-10">
       {!["welcome"].includes(state.step) && (
-          <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-50">
+          <header className="sticky top-0 z-40 bg-white/70 backdrop-blur-md border-b border-slate-100/50">
             <div className="w-full max-w-lg mx-auto px-4 py-4 flex items-center justify-between">
               <div className="flex items-center gap-3 cursor-pointer" onClick={resetBookingFlow}>
                 <div className="logo-ls text-2xl font-medium text-black">LS</div>

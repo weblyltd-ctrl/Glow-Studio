@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { ChevronRight, ChevronLeft, CalendarDays, Loader2, Clock, CheckCircle, AlertTriangle, Copy, Check, MapPin } from "lucide-react";
 import { Service, AppointmentState } from "./types";
@@ -73,7 +74,7 @@ export function DateSelection({ service, selectedDate, selectedTime, onDateSelec
             
             {error && <div className="text-red-500 text-sm bg-red-50 p-3 rounded-lg border border-red-100 mb-2">{error}</div>}
 
-            <div className="sticky bottom-0 bg-[#FAFAFA] pt-4 border-t border-slate-100">
+            <div className="sticky bottom-0 bg-[#fcf9f7]/90 backdrop-blur-sm pt-4 border-t border-slate-200/50">
                 <button 
                     disabled={!isValid || isLoading} 
                     onClick={onNext} 

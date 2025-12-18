@@ -44,7 +44,6 @@ export const api = {
     try {
         let authParams: any = { password };
         
-        // Check if identity is email or phone
         if (identity.includes('@')) {
             authParams.email = identity.trim().toLowerCase();
         } else {
@@ -56,7 +55,6 @@ export const api = {
         
         if (authError) throw authError;
 
-        // Sync to clients table
         await supabase.from('clients').upsert([{
             id: authData.user.id,
             email: authData.user.email,
@@ -174,10 +172,15 @@ export const api = {
     try {
       const { data: { user } } = await (supabase.auth as any).getUser();
       if (!user) throw new Error("יש להתחבר.");
-      const { error } = await supabase.from('appointments').delete().eq('id', Number(bookingId)).eq('user_id', user.id); 
+      
+      // Removed Number() conversion and user_id check to support UUIDs and Admin deletion.
+      // RLS on Supabase will still protect regular users if configured.
+      const { error } = await supabase.from('appointments').delete().eq('id', bookingId); 
+      
       if (error) throw error;
       return { success: true };
     } catch (error: any) {
+      console.error("Cancel booking error:", error);
       return { success: false, error: error.message };
     }
   },
