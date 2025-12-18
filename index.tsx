@@ -56,8 +56,11 @@ function App() {
             await supabase.from('clients').upsert([{ id: user.id, full_name: metaName, phone: metaPhone, email: user.email }]);
             setState(prev => ({ ...prev, currentUser: user, clientName: metaName, clientPhone: metaPhone, clientEmail: user.email, step: "home" }));
         } else {
-            await api.logout();
-            setState(prev => ({ ...prev, currentUser: null, step: "welcome" }));
+            if (state.step === "register") {
+            } else {
+                await api.logout();
+                setState(prev => ({ ...prev, currentUser: null, step: "welcome" }));
+            }
         }
     }
   };
@@ -89,7 +92,7 @@ function App() {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [state.step]);
 
   const resetBookingFlow = () => {
     setState(prev => ({
@@ -118,41 +121,37 @@ function App() {
       if (result.isDemo) setState(prev => ({ ...prev, isDemoMode: true }));
       nextStep(state.isWaitingList ? "waiting-list-confirmed" : "confirmation");
     } else {
-      setSubmissionError(result.message || "אירעה שגיאה בשמירת הנתונים. וודאי שהרצת את ה-SQL ב-Supabase.");
+      setSubmissionError(result.message || "אירעה שגיאה.");
     }
   };
 
   if (isLoadingSession) {
       return (
-          <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">
-              <Loader2 className="animate-spin text-slate-400" size={32} />
+          <div className="min-h-screen flex items-center justify-center bg-white">
+              <Loader2 className="animate-spin text-black" size={32} />
           </div>
       )
   }
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] text-slate-800 font-sans pb-20 md:pb-0 relative overflow-x-hidden">
-      <div className="fixed inset-0 z-0 pointer-events-none">
-         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-pink-100/50 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2"></div>
-         <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-slate-100/50 rounded-full blur-[100px] translate-y-1/2 -translate-x-1/2"></div>
-      </div>
+    <div className="min-h-screen bg-white text-slate-900 font-sans pb-20 md:pb-0 relative overflow-x-hidden">
       <div className="relative z-10">
-      {!["welcome", "login", "register"].includes(state.step) && (
-          <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100">
-            <div className="w-full max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
-              <div className="flex items-center gap-2 cursor-pointer" onClick={resetBookingFlow}>
-                <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white font-bold text-lg">G</div>
-                <span className="text-lg font-bold tracking-tight text-slate-900">Glow Studio</span>
+      {!["welcome"].includes(state.step) && (
+          <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-50">
+            <div className="w-full max-w-lg mx-auto px-4 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3 cursor-pointer" onClick={resetBookingFlow}>
+                <div className="logo-ls text-2xl font-medium text-black">LS</div>
+                <div className="h-4 w-px bg-slate-200"></div>
+                <span className="text-xs font-bold tracking-widest text-slate-900 uppercase">Eyebrow Artist</span>
               </div>
               <div className="flex items-center gap-2">
                  {state.currentUser && (
-                    <button onClick={() => api.logout()} className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-red-600 transition bg-transparent px-2 py-2">
-                         <LogOut size={14} />
-                         <span>יציאה</span>
+                    <button onClick={() => api.logout()} className="p-2 text-slate-400 hover:text-red-600 transition">
+                         <LogOut size={18} />
                     </button>
                  )}
                  {state.step !== "home" && state.step !== "welcome" && (
-                    <button onClick={resetBookingFlow} className="text-sm text-slate-500 hover:text-slate-900 transition font-medium">חזרה</button>
+                    <button onClick={resetBookingFlow} className="text-xs font-bold uppercase tracking-widest text-slate-400 hover:text-black transition">חזרה</button>
                  )}
               </div>
             </div>
@@ -170,8 +169,9 @@ function App() {
         {state.step === "register" && (
           <Register 
             onRegisterSuccess={() => {
-              if (!state.currentUser) {
-                alert("נרשמת בהצלחה! כעת תוכלי להתחבר."); 
+              if (state.currentUser) {
+                  nextStep("home");
+              } else {
                 nextStep("login"); 
               }
             }} 

@@ -14,7 +14,6 @@ export const api = {
         .select('date, time, service');
         
       if (error) throw error;
-
       const normalizedData: Record<string, string[]> = {};
       
       data?.forEach((row: any) => {
@@ -22,13 +21,8 @@ export const api = {
           const timeRange = row.time;
           const startTime = timeRange.includes('-') ? timeRange.split('-')[0] : timeRange;
           
-          if (!normalizedData[dateKey]) {
-              normalizedData[dateKey] = [];
-          }
-          
-          if (!normalizedData[dateKey].includes(startTime)) {
-              normalizedData[dateKey].push(startTime);
-          }
+          if (!normalizedData[dateKey]) normalizedData[dateKey] = [];
+          if (!normalizedData[dateKey].includes(startTime)) normalizedData[dateKey].push(startTime);
 
           let duration = 30;
           const matched = SERVICES.find(s => s.name === row.service);
@@ -37,104 +31,73 @@ export const api = {
           const slotsToBlock = Math.ceil(duration / 30);
           for (let i = 1; i < slotsToBlock; i++) {
                 const nextSlot = addMinutesStr(startTime, i * 30);
-                if (!normalizedData[dateKey].includes(nextSlot)) {
-                    normalizedData[dateKey].push(nextSlot);
-                }
+                if (!normalizedData[dateKey].includes(nextSlot)) normalizedData[dateKey].push(nextSlot);
           }
       });
-
       return { connected: true, slots: normalizedData };
     } catch (error: any) {
-      console.error("Supabase fetch slots error:", error);
       return { connected: false, slots: {}, error: error.message };
     }
   },
 
-  loginUser: async (email: string, password: string): Promise<{success: boolean, message?: string, code?: string}> => {
+  loginUser: async (identity: string, password: string): Promise<{success: boolean, message?: string, code?: string}> => {
     try {
-        const cleanEmail = email.trim().toLowerCase();
-        const { data: authData, error: authError } = await (supabase.auth as any).signInWithPassword({
-            email: cleanEmail,
-            password,
-        });
+        let authParams: any = { password };
         
-        // Check for specific error message for unconfirmed email from Supabase
-        if (authError) {
-            if (authError.message?.toLowerCase().includes('email not confirmed')) {
-                return { 
-                    success: false, 
-                    message: "המייל טרם אומת. אנא בדקי את תיבת הדואר הנכנס שלך.",
-                    code: 'EMAIL_NOT_CONFIRMED'
-                };
-            }
-            throw authError;
+        // Check if identity is email or phone
+        if (identity.includes('@')) {
+            authParams.email = identity.trim().toLowerCase();
+        } else {
+            const phoneDigits = identity.replace(/\D/g, '');
+            authParams.phone = `+972${phoneDigits.startsWith('0') ? phoneDigits.slice(1) : phoneDigits}`;
         }
+        
+        const { data: authData, error: authError } = await (supabase.auth as any).signInWithPassword(authParams);
+        
+        if (authError) throw authError;
 
-        const { data: clientData, error: clientError } = await supabase
-            .from('clients')
-            .select('*')
-            .eq('id', authData.user.id)
-            .single();
+        // Sync to clients table
+        await supabase.from('clients').upsert([{
+            id: authData.user.id,
+            email: authData.user.email,
+            full_name: authData.user.user_metadata?.full_name || "לקוחה",
+            phone: authData.user.user_metadata?.phone || ""
+        }]);
 
-        if (clientError || !clientData) {
-            const meta = authData.user.user_metadata;
-            if (meta?.full_name || meta?.phone) {
-                 await supabase.from('clients').upsert([{
-                    id: authData.user.id,
-                    email: cleanEmail,
-                    full_name: meta.full_name || "משתמש חוזר",
-                    phone: meta.phone || "0500000000"
-                }]);
-                return { success: true };
-            }
-            await (supabase.auth as any).signOut();
-            return { 
-                success: false, 
-                message: "החשבון נמצא במערכת האימות אך חסר בבסיס הנתונים החדש.",
-                code: 'INVALID_CREDENTIALS'
-            };
-        }
         return { success: true };
     } catch (error: any) {
-        return { success: false, message: "פרטי התחברות שגויים", code: 'ERROR' };
+        return { success: false, message: error.message || "פרטי התחברות שגויים", code: 'ERROR' };
     }
   },
 
-  registerUser: async (email: string, password: string, fullName: string, phone: string): Promise<{success: boolean, message?: string, requiresConfirmation?: boolean}> => {
+  registerUser: async (email: string, password: string, fullName: string, phone: string): Promise<{success: boolean, message?: string}> => {
     try {
-        const cleanEmail = email.trim().toLowerCase();
+        const phoneDigits = phone.replace(/\D/g, '');
+        
         const { data, error } = await (supabase.auth as any).signUp({
-            email: cleanEmail,
-            password,
-            options: { data: { full_name: fullName, phone: phone } }
+            email: email.trim().toLowerCase(),
+            password: password,
+            options: { 
+                data: { 
+                    full_name: fullName, 
+                    phone: phoneDigits 
+                }
+            }
         });
+        
         if (error) throw error;
 
         if (data.user) {
             await supabase.from('clients').upsert([{
                 id: data.user.id,
-                email: cleanEmail,
+                email: email.trim().toLowerCase(),
                 full_name: fullName,
-                phone: phone
+                phone: phoneDigits
             }]);
         }
-        return { success: true, requiresConfirmation: !data.session };
+        return { success: true };
     } catch (error: any) {
         return { success: false, message: error.message || "שגיאה בהרשמה" };
-    }
-  },
-
-  // Added resendConfirmationEmail method to handle Supabase auth confirmation emails
-  resendConfirmationEmail: async (email: string): Promise<{ success: boolean; message?: string }> => {
-    try {
-        const { error } = await (supabase.auth as any).resend({
-            type: 'signup',
-            email: email.trim().toLowerCase(),
-        });
-        if (error) throw error;
-        return { success: true, message: "מייל אימות נשלח שוב בהצלחה!" };
-    } catch (error: any) {
-        return { success: false, message: error.message || "שגיאה בשליחת המייל" };
     }
   },
 
@@ -150,7 +113,7 @@ export const api = {
 
   fetchUserProfile: async (userId: string): Promise<Partial<ClientProfile> | null> => {
       try {
-          const { data, error } = await supabase.from('clients').select('full_name, phone').eq('id', userId).single();
+          const { data, error } = await supabase.from('clients').select('full_name, phone, email').eq('id', userId).single();
           if (error) return null;
           return data;
       } catch (e) { return null; }
@@ -166,11 +129,7 @@ export const api = {
 
   fetchAllBookings: async (): Promise<ClientBooking[]> => {
     try {
-      const { data, error } = await supabase
-        .from('appointments')
-        .select('*')
-        .order('date', { ascending: true })
-        .order('time', { ascending: true });
+      const { data, error } = await supabase.from('appointments').select('*').order('date', { ascending: true }).order('time', { ascending: true });
       if (error) throw error;
       return data as ClientBooking[];
     } catch (error) { return []; }
@@ -201,7 +160,10 @@ export const api = {
       };
 
       const { error } = await supabase.from('appointments').insert([payload]);
-      if (error) return { success: true, isDemo: true };
+      if (error) {
+          if (error.message.includes("row-level security")) return { success: true, isDemo: true };
+          return { success: false, message: error.message };
+      }
       return { success: true };
     } catch (error: any) {
       return { success: false, message: error.message };
@@ -226,29 +188,32 @@ export const api = {
         .from('studio_settings')
         .select('value')
         .eq('key', 'admin_password')
-        .single();
-      if (error || !data) {
-          return password === '1234' ? { success: true } : { success: false, message: "סיסמה שגויה" };
-      }
+        .maybeSingle();
+        
+      if (error) throw error;
+      if (!data) return password === '1234' ? { success: true } : { success: false, message: "סיסמה שגויה (1234)" };
+      
       return data.value === password ? { success: true } : { success: false, message: "סיסמה שגויה" };
     } catch (error: any) {
-      return password === '1234' ? { success: true } : { success: false, message: "שגיאה באימות" };
+      return { success: false, message: "שגיאת תקשורת" };
     }
   },
 
   updateAdminPassword: async (newPassword: string): Promise<{ success: boolean; message?: string }> => {
     try {
-      // עדכון ה-value בטבלה studio_settings עבור המפתח admin_password
       const { error } = await supabase
         .from('studio_settings')
-        .update({ value: newPassword })
-        .eq('key', 'admin_password');
+        .upsert({ key: 'admin_password', value: newPassword }, { onConflict: 'key' });
         
-      if (error) throw error;
-      return { success: true, message: "הסיסמה עודכנה בהצלחה במסד הנתונים!" };
+      if (error) {
+          if (error.message.includes("row-level security")) {
+              throw new Error("RLS_ERROR");
+          }
+          throw error;
+      }
+      return { success: true, message: "עודכן!" };
     } catch (error: any) {
-      console.error("Update admin password error:", error);
-      return { success: false, message: "שגיאה בעדכון: וודאי שהרצת את קוד ה-SQL להרשאות UPDATE." };
+      return { success: false, message: error.message };
     }
   },
 

@@ -1,26 +1,23 @@
 
 import { Service } from "./types";
 
-// הפרטים של הפרויקט שלך ב-Supabase
 export const SUPABASE_URL = process.env.SUPABASE_URL || "https://gkdhgxpjkhucdanougua.supabase.co";
-// שים לב: המפתח שסופק (sb_publishable_...) נראה כמו מפתח Stripe. 
-// אם החיבור נכשל, יש להחליף אותו ב-Anon Key מה-Supabase Dashboard (מתחיל ב-eyJ)
 export const SUPABASE_ANON_KEY = process.env.SUPABASE_KEY || "sb_publishable_aPKU7C8-IsokIsuH0szcUQ_ZM6i5vuR";
 
 export const BUSINESS_INFO = {
-  name: "Glow Studio",
-  phone: "972502233373", // פורמט בינלאומי ל-WhatsApp
+  name: "LS Eyebrow Artist",
+  phone: "972502233373",
   displayPhone: "050-2233373",
   address: "דיזינגוף 100, תל אביב",
   mapUrl: "https://maps.app.goo.gl/example"
 };
 
 export const BUSINESS_HOURS = {
-  start: 9, // 09:00
-  end: 18,  // 18:00
+  start: 9,
+  end: 18,
 };
 
-export const WORKING_DAYS = [0, 1, 2, 3, 4]; // Sunday (0) to Thursday (4)
+export const WORKING_DAYS = [0, 1, 2, 3, 4];
 
 export const SERVICES: Service[] = [
   {
@@ -28,7 +25,7 @@ export const SERVICES: Service[] = [
     name: "עיצוב גבות",
     price: 100,
     duration: 60,
-    description: "עיצוב והתאמת צורה למבנה הפנים (60 דקות).",
+    description: "עיצוב והתאמת צורה למבנה הפנים.",
     category: "brows"
   },
   {
@@ -36,7 +33,7 @@ export const SERVICES: Service[] = [
     name: "עיצוב ריסים",
     price: 180,
     duration: 45,
-    description: "טיפול לעיצוב ריסים (45 דקות).",
+    description: "טיפול לעיצוב ריסים מקצועי.",
     category: "lashes"
   },
   {
@@ -57,10 +54,10 @@ export const SERVICES: Service[] = [
   },
   {
     id: "combo-glow",
-    name: "חבילת גלואו (משולב)",
+    name: "חבילת LS Signature",
     price: 350,
     duration: 90,
-    description: "הרמת ריסים ועיצוב גבות במחיר משתלם.",
+    description: "הרמת ריסים ועיצוב גבות משולב.",
     category: "combo"
   }
 ];
