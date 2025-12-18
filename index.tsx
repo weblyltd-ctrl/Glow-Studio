@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { Loader2, LogOut, MessageCircle, X } from "lucide-react";
 import { supabase, api } from "./api";
@@ -23,43 +23,52 @@ function App() {
     isDemoMode: false,
     currentUser: null
   });
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
+  
+  // Ref to prevent concurrent sync operations that cause freezes
+  const isSyncingRef = useRef(false);
 
   const syncUserProfile = useCallback(async (user: any) => {
-    if (!user) {
-        setState(prev => ({ ...prev, currentUser: null, clientName: "", clientPhone: "", clientEmail: "" }));
-        return;
-    }
+    if (!user || isSyncingRef.current) return;
     
+    isSyncingRef.current = true;
     try {
         const profile = await api.fetchUserProfile(user.id);
         
-        if (profile) {
-            const name = profile.full_name || user.user_metadata?.full_name || user.user_metadata?.name || "";
-            const phone = profile.phone || user.user_metadata?.phone || "";
+        setState(prev => {
+            // Only update if something actually changed or if we are logging in
+            const name = profile?.full_name || user.user_metadata?.full_name || user.user_metadata?.name || "";
+            const phone = profile?.phone || user.user_metadata?.phone || "";
+            
+            if (prev.currentUser?.id === user.id && prev.clientName === name && prev.clientPhone === phone) {
+                return prev;
+            }
 
-            setState(prev => ({ 
+            return { 
                 ...prev, 
                 currentUser: user,
                 clientEmail: user.email || "",
                 clientName: name,
                 clientPhone: phone,
                 step: (["welcome", "login", "register", "admin-auth"].includes(prev.step) ? "home" : prev.step) as AppointmentState["step"]
-            }));
-        } else {
+            };
+        });
+
+        if (!profile) {
             const metaName = user.user_metadata?.full_name || user.user_metadata?.name || "";
             const metaPhone = user.user_metadata?.phone || "";
-            
             if (metaName && metaPhone) {
                 await supabase.from('clients').upsert([{ id: user.id, full_name: metaName, phone: metaPhone, email: user.email }]);
-                setState(prev => ({ ...prev, currentUser: user, clientName: metaName, clientPhone: metaPhone, clientEmail: user.email, step: "home" }));
             }
         }
     } catch (e) {
         console.error("Sync profile error:", e);
+    } finally {
+        isSyncingRef.current = false;
     }
   }, []);
 
@@ -81,10 +90,18 @@ function App() {
 
     initSession();
 
+    // Listen for tab focus returns - helps prevent "stale" state freezes
+    const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible' && mounted) {
+            initSession();
+        }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     const { data: { subscription } } = (supabase.auth as any).onAuthStateChange(async (event: string, session: any) => {
          if (!mounted) return;
          
-         if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+         if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
              if (session?.user) {
                  await syncUserProfile(session.user);
              }
@@ -103,6 +120,7 @@ function App() {
     return () => {
         mounted = false;
         subscription.unsubscribe();
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [syncUserProfile]);
 
@@ -145,7 +163,10 @@ function App() {
   if (isLoadingSession) {
       return (
           <div className="min-h-screen flex items-center justify-center bg-[#fcf9f7]">
-              <Loader2 className="animate-spin text-black" size={32} />
+              <div className="flex flex-col items-center gap-4">
+                <Loader2 className="animate-spin text-black" size={32} />
+                <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">טוען סשן מאובטח...</span>
+              </div>
           </div>
       )
   }
