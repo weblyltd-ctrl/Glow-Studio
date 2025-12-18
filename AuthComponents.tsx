@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from "react";
-import { LogIn, UserPlus, ChevronRight, AlertCircle, Loader2, User, Phone, Eye, EyeOff, Settings, Mail } from "lucide-react";
+import { LogIn, UserPlus, ChevronRight, AlertCircle, Loader2, User, Phone, Eye, EyeOff, Settings, Mail, CheckCircle } from "lucide-react";
 import { api } from "./api";
 
 export function WelcomeScreen({ onLogin, onRegister, onAdminAccess }: { onLogin: () => void, onRegister: () => void, onAdminAccess: () => void }) {
@@ -77,13 +77,13 @@ export function ManageLogin({ onLoginSuccess, onBack, onGoToRegister }: { onLogi
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mr-1">אימייל או טלפון</label>
                     <div className="relative">
                         <User className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                        <input type="text" value={identity} onChange={(e) => setIdentity(e.target.value)} required className="w-full p-4 pr-12 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="your@email.com" />
+                        <input type="text" value={identity} onChange={(e) => setIdentity(e.target.value)} required className="w-full p-4 pr-12 bg-white border border-slate-100 rounded-2xl focus:outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="your@email.com" />
                     </div>
                 </div>
                 <div className="space-y-1">
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mr-1">סיסמה</label>
                     <div className="relative">
-                        <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="******" />
+                        <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full p-4 bg-white border border-slate-100 rounded-2xl focus:outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="******" />
                         <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition">{showPassword ? <EyeOff size={20} /> : <Eye size={20} />}</button>
                     </div>
                 </div>
@@ -110,6 +110,7 @@ export function Register({ onRegisterSuccess, onBack, onGoToLogin }: { onRegiste
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [isRegistered, setIsRegistered] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -118,11 +119,31 @@ export function Register({ onRegisterSuccess, onBack, onGoToLogin }: { onRegiste
         const res = await api.registerUser(email, password, fullName, phone);
         setLoading(false);
         if (res.success) {
-            onRegisterSuccess();
+            setIsRegistered(true);
         } else {
             setError(res.message || "שגיאה בתהליך ההרשמה. ייתכן והאימייל כבר בשימוש.");
         }
     };
+
+    if (isRegistered) {
+        return (
+            <div className="space-y-8 animate-scale-in text-center py-10 max-w-sm mx-auto">
+                <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto shadow-sm">
+                    <CheckCircle size={48} />
+                </div>
+                <div className="space-y-2">
+                    <h2 className="text-3xl font-bold text-green-600">תודה על הרשמתך!</h2>
+                    <p className="text-slate-500">החשבון שלך נוצר בהצלחה. כעת את יכולה להתחבר ולקבוע תור.</p>
+                </div>
+                <div className="pt-6">
+                    <button onClick={onGoToLogin} className="w-full bg-black text-white py-4 rounded-full font-bold shadow-xl hover:bg-slate-800 transition-all flex items-center justify-center gap-2 transform active:scale-95">
+                        <LogIn size={18} />
+                        <span>התחברי כעת</span>
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
      return (
         <div className="space-y-8 animate-slide-up max-w-sm mx-auto">
@@ -135,27 +156,27 @@ export function Register({ onRegisterSuccess, onBack, onGoToLogin }: { onRegiste
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mr-1">שם מלא</label>
                     <div className="relative">
                         <User className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                        <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} required className="w-full p-4 pr-12 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="שם מלא" />
+                        <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} required className="w-full p-4 pr-12 bg-white border border-slate-100 rounded-2xl focus:outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="שם מלא" />
                     </div>
                 </div>
                 <div className="space-y-1">
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mr-1">אימייל (שם משתמש)</label>
                     <div className="relative">
                         <Mail className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full p-4 pr-12 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="your@email.com" />
+                        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full p-4 pr-12 bg-white border border-slate-100 rounded-2xl focus:outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="your@email.com" />
                     </div>
                 </div>
                  <div className="space-y-1">
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mr-1">מספר טלפון</label>
                     <div className="relative">
                         <Phone className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                        <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required className="w-full p-4 pr-12 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="050-1234567" maxLength={10} />
+                        <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required className="w-full p-4 pr-12 bg-white border border-slate-100 rounded-2xl focus:outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="050-1234567" maxLength={10} />
                     </div>
                 </div>
                 <div className="space-y-1">
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mr-1">בחרי סיסמה</label>
                     <div className="relative">
-                        <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="לפחות 6 תווים" />
+                        <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} className="w-full p-4 bg-white border border-slate-100 rounded-2xl focus:outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="לפחות 6 תווים" />
                         <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition">{showPassword ? <EyeOff size={20} /> : <Eye size={20} />}</button>
                     </div>
                 </div>
