@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createRoot } from "react-dom/client";
-import { Loader2, LogOut, MessageCircle, X } from "lucide-react";
+import { Loader2, LogOut, MessageCircle, X, AlertCircle } from "lucide-react";
 import { supabase, api } from "./api";
 import { SERVICES } from "./constants";
 import { AppointmentState } from "./types";
@@ -40,7 +40,6 @@ function App() {
         const profile = await api.fetchUserProfile(user.id);
         
         setState(prev => {
-            // Only update if something actually changed or if we are logging in
             const name = profile?.full_name || user.user_metadata?.full_name || user.user_metadata?.name || "";
             const phone = profile?.phone || user.user_metadata?.phone || "";
             
@@ -66,7 +65,7 @@ function App() {
             }
         }
     } catch (e) {
-        console.error("Sync profile error:", e);
+        console.warn("Sync profile failed (might be network/config issue):", e);
     } finally {
         isSyncingRef.current = false;
     }
@@ -76,21 +75,31 @@ function App() {
     let mounted = true;
 
     const initSession = async () => {
+        // Safe timeout to prevent infinite loading if Supabase is unreachable
+        const timeoutId = setTimeout(() => {
+            if (mounted && isLoadingSession) {
+                console.warn("Auth initialization timed out. Proceeding to welcome screen.");
+                setIsLoadingSession(false);
+            }
+        }, 3500);
+
         try {
-            const { data: { session } } = await (supabase.auth as any).getSession();
+            const { data: { session }, error } = await (supabase.auth as any).getSession();
+            if (error) throw error;
+            
             if (session?.user && mounted) {
                 await syncUserProfile(session.user);
             }
         } catch (e) {
             console.error("Auth init error:", e);
         } finally {
+            clearTimeout(timeoutId);
             if (mounted) setIsLoadingSession(false);
         }
     };
 
     initSession();
 
-    // Listen for tab focus returns - helps prevent "stale" state freezes
     const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible' && mounted) {
             initSession();
@@ -163,9 +172,9 @@ function App() {
   if (isLoadingSession) {
       return (
           <div className="min-h-screen flex items-center justify-center bg-[#fcf9f7]">
-              <div className="flex flex-col items-center gap-4">
-                <Loader2 className="animate-spin text-black" size={32} />
-                <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">טוען סשן מאובטח...</span>
+              <div className="flex flex-col items-center gap-4 animate-pulse">
+                <Loader2 className="animate-spin text-black opacity-20" size={32} />
+                <span className="text-[10px] font-bold uppercase tracking-widest opacity-30">טוען סביבה מאובטחת...</span>
               </div>
           </div>
       )
