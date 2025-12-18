@@ -25,7 +25,7 @@ export const SERVICES: Service[] = [
     name: "עיצוב גבות",
     price: 100,
     duration: 60,
-    description: "עיצוב והתאמת צורה למבנה הפנים.",
+    description: "פיסול והתאמת צורת הגבה באופן מושלם למבנה הפנים הייחודי שלך.",
     category: "brows"
   },
   {
@@ -33,7 +33,7 @@ export const SERVICES: Service[] = [
     name: "עיצוב ריסים",
     price: 180,
     duration: 45,
-    description: "טיפול לעיצוב ריסים מקצועי.",
+    description: "הדגשת העיניים והענקת מראה עוצמתי וטבעי לריסים ללא צורך במסקרה.",
     category: "lashes"
   },
   {
@@ -41,7 +41,7 @@ export const SERVICES: Service[] = [
     name: "הרמת גבות",
     price: 220,
     duration: 45,
-    description: "טיפול המעניק לגבות מראה מלא ומורם.",
+    description: "טיפול לקיבוע והרמת שיערת הגבה למראה מלא, מסודר ומורם לאורך זמן.",
     category: "brows"
   },
   {
@@ -49,7 +49,7 @@ export const SERVICES: Service[] = [
     name: "הרמת ריסים",
     price: 250,
     duration: 60,
-    description: "הרמה וסלסול הריסים הטבעיים.",
+    description: "הענקת קימור טבעי, אורך וצבע עמוק לריסים הטבעיים שלך לפתיחת המבט.",
     category: "lashes"
   },
   {
@@ -57,7 +57,7 @@ export const SERVICES: Service[] = [
     name: "חבילת LS Signature",
     price: 350,
     duration: 90,
-    description: "הרמת ריסים ועיצוב גבות משולב.",
+    description: "השילוב המנצח למראה עיניים מושלם – הרמת ריסים ועיצוב גבות בטיפול אחד.",
     category: "combo"
   }
 ];

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from "react";
-import { ChevronLeft, ChevronRight, List, Users, Calendar, Clock, Trash2, Loader2, Lock, Key, Save, Phone, User, RefreshCw, AlertCircle, Check, Settings, Eye, EyeOff, Copy, AlertTriangle } from "lucide-react";
+import { ChevronLeft, ChevronRight, List, Users, Calendar, Clock, Trash2, Loader2, Lock, Key, Save, Phone, User, RefreshCw, AlertCircle, Check, Settings, Eye, EyeOff, Copy, AlertTriangle, XCircle } from "lucide-react";
 import { api } from "./api";
 import { ClientBooking, ClientProfile } from "./types";
 
@@ -10,8 +10,8 @@ export function HeroSection({ userEmail, userName, onStartBooking, onManageBooki
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-8 animate-fade-in">
         <div className="space-y-2 max-w-xs mx-auto">
-            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">היי{displayName}! 👋</h1>
-            <p className="text-slate-500">מה נרצה לעשות היום?</p>
+            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 font-serif-logo">היי{displayName}! 👋</h1>
+            <p className="text-slate-500 text-sm tracking-wide">ברוכה הבאה לסטודיו של ליאן שמש</p>
         </div>
         <div className="grid gap-4 w-full max-w-xs">
             <button onClick={onStartBooking} className="group bg-black text-white px-8 py-5 rounded-2xl text-lg font-bold shadow-xl hover:-translate-y-1 transition-all flex items-center justify-between">
@@ -22,9 +22,9 @@ export function HeroSection({ userEmail, userName, onStartBooking, onManageBooki
                 <span>התורים שלי</span>
                 <div className="bg-slate-100 p-2 rounded-full"><List size={20} /></div>
             </button>
-            <button onClick={onAdminAccess} className="group bg-slate-50 text-slate-400 border border-slate-100 px-8 py-3 rounded-2xl text-sm font-medium hover:bg-slate-100 transition-all flex items-center justify-center gap-2 mt-4">
-                <Settings size={16} />
-                <span>ניהול הסטודיו (למנהלת בלבד)</span>
+            <button onClick={onAdminAccess} className="group bg-transparent text-slate-400 border border-transparent px-8 py-3 rounded-2xl text-[10px] font-bold uppercase tracking-widest hover:text-black transition-all flex items-center justify-center gap-2 mt-8">
+                <Settings size={14} />
+                <span>Admin Settings</span>
             </button>
         </div>
     </div>
@@ -58,24 +58,24 @@ export function AdminAuth({ onSuccess, onBack }: { onSuccess: () => void, onBack
     return (
         <div className="space-y-6 animate-slide-up py-10">
              <div className="flex items-center gap-2 text-right">
-                <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition"><ChevronRight size={24} /></button>
-                <h2 className="text-2xl font-bold">כניסת מנהלת</h2>
+                <button onClick={onBack} className="p-2 hover:bg-slate-50 rounded-full transition"><ChevronRight size={24} /></button>
+                <h2 className="text-2xl font-bold font-serif-logo">כניסת מנהלת</h2>
             </div>
-            <div className="bg-slate-50 border border-slate-100 p-6 rounded-3xl text-center space-y-4 shadow-sm">
+            <div className="bg-white border border-slate-100 p-8 rounded-3xl text-center space-y-4 shadow-sm">
                 <div className="w-16 h-16 bg-black text-white rounded-full flex items-center justify-center mx-auto shadow-lg"><Lock size={28} /></div>
-                <p className="text-slate-500 text-sm">אנא הזיני את סיסמת הניהול של הסטודיו כדי להמשיך</p>
+                <p className="text-slate-500 text-xs tracking-wide">אנא הזיני את סיסמת הניהול להמשך</p>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <input 
                         type="password" 
                         value={password} 
                         onChange={(e) => setPassword(e.target.value)} 
-                        className="w-full p-4 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-black text-center text-xl tracking-widest transition shadow-inner" 
-                        placeholder="****" 
+                        className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-1 focus:ring-black text-center text-xl tracking-widest transition" 
+                        placeholder="••••" 
                         autoFocus 
                         disabled={loading}
                     />
                     {error && (
-                        <div className="bg-red-50 text-red-600 text-xs p-3 rounded-xl border border-red-100 flex items-center justify-center gap-2 animate-shake">
+                        <div className="bg-red-50 text-red-600 text-[10px] font-bold p-3 rounded-xl border border-red-100 flex items-center justify-center gap-2 animate-shake">
                             <AlertCircle size={14} />
                             <span>{error}</span>
                         </div>
@@ -83,12 +83,11 @@ export function AdminAuth({ onSuccess, onBack }: { onSuccess: () => void, onBack
                     <button 
                         type="submit" 
                         disabled={loading || !password} 
-                        className="w-full bg-black text-white py-4 rounded-full font-bold shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        className="w-full bg-black text-white py-4 rounded-full font-bold shadow-lg hover:bg-slate-800 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                     >
-                        {loading ? <Loader2 className="animate-spin" size={20} /> : 'כניסה לממשק הניהול'}
+                        {loading ? <Loader2 className="animate-spin" size={20} /> : 'כניסה למערכת'}
                     </button>
                 </form>
-                <p className="text-[10px] text-slate-400">אם זו הפעם הראשונה, נסי 1234</p>
             </div>
         </div>
     );
@@ -97,6 +96,7 @@ export function AdminAuth({ onSuccess, onBack }: { onSuccess: () => void, onBack
 export function ManageList({ userId, onBack }: { userId: string, onBack: () => void }) {
     const [bookings, setBookings] = useState<ClientBooking[]>([]);
     const [loading, setLoading] = useState(true);
+    const [deletingId, setDeletingId] = useState<string | number | null>(null);
 
     const load = async () => { 
         setLoading(true); 
@@ -108,25 +108,48 @@ export function ManageList({ userId, onBack }: { userId: string, onBack: () => v
     useEffect(() => { load(); }, [userId]);
 
     const handleCancel = async (bookingId: string | number) => { 
-        if (!window.confirm(`לבטל את התור?`)) return;
+        setDeletingId(bookingId);
         const res = await api.cancelBooking(bookingId); 
-        if (res.success) setBookings(prev => prev.filter(b => b.id !== bookingId));
+        if (res.success) {
+            setBookings(prev => prev.filter(b => b.id !== bookingId));
+        }
+        setDeletingId(null);
     }
 
     return (
         <div className="space-y-6 animate-slide-up text-right">
              <div className="flex items-center gap-2">
-                <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition"><ChevronRight size={24} /></button>
-                <h2 className="text-2xl font-bold">התורים שלי</h2>
+                <button onClick={onBack} className="p-2 hover:bg-slate-50 rounded-full transition"><ChevronRight size={24} /></button>
+                <h2 className="text-2xl font-bold font-serif-logo">התורים שלי</h2>
             </div>
-            {loading ? <div className="flex justify-center p-10"><Loader2 className="animate-spin text-slate-300" /></div> : (
+            {loading ? <div className="flex justify-center p-20"><Loader2 className="animate-spin text-black" size={32} /></div> : (
                 <div className="space-y-4">
                     {bookings.length === 0 ? (
-                        <div className="text-center py-20 text-slate-400 bg-white rounded-2xl border border-dashed">אין תורים עתידיים</div>
+                        <div className="text-center py-24 text-slate-300 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
+                            <Calendar className="mx-auto mb-2 opacity-20" size={32} />
+                            <p className="text-xs font-bold uppercase tracking-widest">אין תורים עתידיים</p>
+                        </div>
                     ) : bookings.map((b) => (
-                        <div key={b.id} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center">
-                            <div><div className="font-bold">{b.service}</div><div className="text-slate-500 text-xs">{b.date} בשעה {b.time}</div></div>
-                            <button onClick={() => handleCancel(b.id)} className="text-slate-300 hover:text-red-500 p-2 transition"><Trash2 size={20} /></button>
+                        <div key={b.id} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center group hover:border-slate-200 transition-all">
+                            <div className="space-y-1">
+                                <div className="font-bold text-slate-900">{b.service}</div>
+                                <div className="flex items-center gap-2 text-slate-400 text-[11px] font-bold uppercase tracking-wider">
+                                    <Calendar size={12} />
+                                    <span>{new Date(b.date).toLocaleDateString('he-IL')}</span>
+                                    <span className="w-1 h-1 bg-slate-200 rounded-full"></span>
+                                    <Clock size={12} />
+                                    <span>{b.time}</span>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={() => handleCancel(b.id)} 
+                                disabled={deletingId === b.id}
+                                className="flex items-center gap-1.5 text-red-500 hover:text-red-700 font-bold text-[10px] uppercase tracking-widest px-3 py-2 bg-red-50 rounded-full transition-all disabled:opacity-50"
+                                title="ביטול מיידי"
+                            >
+                                {deletingId === b.id ? <Loader2 className="animate-spin" size={14} /> : <XCircle size={14} />}
+                                <span>ביטול תור</span>
+                            </button>
                         </div>
                     ))}
                 </div>
@@ -143,6 +166,7 @@ export function ClientRegistry({ onBack }: { onBack: () => void }) {
     const [isLoading, setIsLoading] = useState(true);
     const [newPassword, setNewPassword] = useState('');
     const [updating, setUpdating] = useState(false);
+    const [deletingBookingId, setDeletingBookingId] = useState<string | number | null>(null);
     const [msg, setMsg] = useState<{type:'success'|'error', text:string, isRls?:boolean}|null>(null);
     const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
     const [copied, setCopied] = useState(false);
@@ -168,6 +192,15 @@ export function ClientRegistry({ onBack }: { onBack: () => void }) {
             setIsLoading(false);
         }
     };
+
+    const handleAdminDeleteBooking = async (bookingId: string | number) => {
+        setDeletingBookingId(bookingId);
+        const res = await api.cancelBooking(bookingId);
+        if (res.success) {
+            setAllBookings(prev => prev.filter(b => b.id !== bookingId));
+        }
+        setDeletingBookingId(null);
+    }
 
     useEffect(() => { loadData(); }, []);
 
@@ -205,15 +238,15 @@ export function ClientRegistry({ onBack }: { onBack: () => void }) {
         <div className="space-y-6 animate-slide-up pb-10 text-right">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                    <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition"><ChevronRight size={24} /></button>
-                    <h2 className="text-2xl font-bold">ניהול הסטודיו</h2>
+                    <button onClick={onBack} className="p-2 hover:bg-slate-50 rounded-full transition"><ChevronRight size={24} /></button>
+                    <h2 className="text-2xl font-bold font-serif-logo">ממשק ניהול</h2>
                 </div>
-                <button onClick={loadData} className="p-2 text-slate-400 hover:text-black transition" title="רענון נתונים"><RefreshCw size={20} className={isLoading ? "animate-spin" : ""} /></button>
+                <button onClick={loadData} className="p-2 text-slate-400 hover:text-black transition" title="רענון"><RefreshCw size={18} className={isLoading ? "animate-spin" : ""} /></button>
             </div>
 
-            <div className="flex p-1 bg-slate-100 rounded-2xl">
+            <div className="flex p-1 bg-slate-50 rounded-2xl border border-slate-100">
                 {['bookings', 'clients', 'settings'].map((tab) => (
-                    <button key={tab} onClick={() => setActiveTab(tab as any)} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === tab ? 'bg-white text-black shadow-sm' : 'text-slate-500'}`}>
+                    <button key={tab} onClick={() => setActiveTab(tab as any)} className={`flex-1 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-black text-white shadow-md' : 'text-slate-400'}`}>
                         {tab === 'bookings' ? 'תורים' : tab === 'clients' ? 'לקוחות' : 'הגדרות'}
                     </button>
                 ))}
@@ -222,43 +255,56 @@ export function ClientRegistry({ onBack }: { onBack: () => void }) {
             <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden min-h-[400px]">
                 {isLoading ? (
                     <div className="flex flex-col items-center justify-center p-20 gap-3">
-                        <Loader2 className="animate-spin text-slate-300" size={32} />
-                        <span className="text-slate-400 text-sm">טוען נתונים...</span>
+                        <Loader2 className="animate-spin text-black" size={32} />
+                        <span className="text-slate-400 text-xs font-bold uppercase tracking-widest">טוען...</span>
                     </div>
                 ) : activeTab === 'bookings' ? (
                     <div className="divide-y divide-slate-50">
                         {allBookings.length === 0 ? (
-                            <div className="p-20 text-center text-slate-300 italic">לא נמצאו תורים</div>
+                            <div className="p-20 text-center text-slate-300 italic text-xs uppercase tracking-widest">לא נמצאו תורים במערכת</div>
                         ) : allBookings.map((b) => (
-                            <div key={b.id} className="p-4 flex justify-between items-center hover:bg-slate-50 transition">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-black text-white rounded-xl flex flex-col items-center justify-center text-[10px] font-bold">
+                            <div key={b.id} className="p-4 flex justify-between items-center hover:bg-slate-50 transition group">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-10 h-10 bg-slate-900 text-white rounded-xl flex flex-col items-center justify-center text-[10px] font-bold leading-tight">
                                         <span>{b.date.split('-')[2]}</span>
-                                        <span className="opacity-50">{b.date.split('-')[1]}</span>
+                                        <span className="opacity-50 text-[8px]">{b.date.split('-')[1]}</span>
                                     </div>
-                                    <div><div className="font-bold text-sm">{b.client_name}</div><div className="text-slate-400 text-xs">{b.service} - {b.time}</div></div>
+                                    <div>
+                                        <div className="font-bold text-sm text-slate-900">{b.client_name}</div>
+                                        <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">{b.service} - {b.time}</div>
+                                    </div>
                                 </div>
-                                {b.client_phone && <a href={`tel:${b.client_phone}`} className="p-2 bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100 transition"><Phone size={16} /></a>}
+                                <div className="flex items-center gap-2">
+                                    {b.client_phone && <a href={`tel:${b.client_phone}`} className="p-2 bg-slate-100 text-slate-600 rounded-full hover:bg-black hover:text-white transition shadow-sm"><Phone size={14} /></a>}
+                                    <button 
+                                        onClick={() => handleAdminDeleteBooking(b.id)} 
+                                        disabled={deletingBookingId === b.id}
+                                        className="p-2 bg-red-50 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition shadow-sm"
+                                        title="מחיקה מיידית"
+                                    >
+                                        {deletingBookingId === b.id ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />}
+                                    </button>
+                                </div>
                             </div>
                         ))}
                     </div>
                 ) : activeTab === 'clients' ? (
                     <div className="divide-y divide-slate-50">
                         {clients.length === 0 ? (
-                            <div className="p-20 text-center text-slate-300 italic">אין לקוחות רשומות</div>
+                            <div className="p-20 text-center text-slate-300 italic text-xs tracking-widest uppercase">אין לקוחות רשומות</div>
                         ) : clients.map(c => (
                             <div key={c.id} className="p-5 flex flex-col gap-3 hover:bg-slate-50 transition">
                                 <div className="flex justify-between items-start">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center font-bold text-slate-500">{c.full_name?.charAt(0)}</div>
+                                        <div className="w-10 h-10 bg-black text-white rounded-full flex items-center justify-center font-bold text-sm leading-none">{c.full_name?.charAt(0)}</div>
                                         <div>
                                             <div className="font-bold text-sm text-slate-900">{c.full_name}</div>
-                                            <div className="text-slate-400 text-[10px]">{c.email}</div>
+                                            <div className="text-slate-400 text-[10px] font-medium">{c.email}</div>
                                         </div>
                                     </div>
-                                    <div className="text-[10px] bg-slate-100 px-2 py-1 rounded text-slate-500 font-medium">{new Date(c.created_at).toLocaleDateString()}</div>
+                                    <div className="text-[9px] bg-slate-100 px-2 py-1 rounded-full text-slate-500 font-bold uppercase tracking-wider">{new Date(c.created_at).toLocaleDateString()}</div>
                                 </div>
-                                <div className="flex items-center justify-between bg-white border border-slate-100 p-3 rounded-xl shadow-sm">
+                                <div className="flex items-center justify-between bg-white border border-slate-100 p-3 rounded-2xl shadow-sm">
                                     <div className="flex items-center gap-4">
                                         <div className="flex items-center gap-1.5">
                                             <Phone size={14} className="text-slate-300" />
@@ -268,40 +314,40 @@ export function ClientRegistry({ onBack }: { onBack: () => void }) {
                                         <div className="flex items-center gap-1.5 group cursor-pointer" onClick={() => togglePassword(c.id)}>
                                             <Key size={14} className="text-slate-300" />
                                             <span className="text-xs font-mono text-slate-600">
-                                                {visiblePasswords[c.id] ? (c.password || 'לא הוגדר') : '••••••'}
+                                                {visiblePasswords[c.id] ? (c.password || 'N/A') : '••••••'}
                                             </span>
-                                            <button className="text-slate-300 group-hover:text-slate-600 ml-1">
+                                            <button className="text-slate-300 group-hover:text-black ml-1">
                                                 {visiblePasswords[c.id] ? <EyeOff size={12} /> : <Eye size={12} />}
                                             </button>
                                         </div>
                                     </div>
-                                    {c.phone && <a href={`tel:${c.phone}`} className="text-blue-500 hover:text-blue-700 transition"><Phone size={14} /></a>}
+                                    {c.phone && <a href={`tel:${c.phone}`} className="text-blue-500 hover:scale-110 transition"><Phone size={14} /></a>}
                                 </div>
                             </div>
                         ))}
                     </div>
                 ) : (
                     <div className="p-6 space-y-6">
-                        <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 space-y-4">
-                            <h3 className="text-sm font-bold flex items-center gap-2 text-slate-700">
+                        <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-4">
+                            <h3 className="text-xs font-bold flex items-center gap-2 text-slate-500 uppercase tracking-widest">
                                 <Key size={16} className="text-slate-400" />
-                                <span>סיסמת מנהלת</span>
+                                <span>Security Settings</span>
                             </h3>
                             <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">סיסמה נוכחית:</label>
-                                <div className="bg-white border border-slate-200 p-3 rounded-xl font-mono text-center font-bold text-slate-900 shadow-sm">
-                                    {studioSettings.admin_password || '--- (ברירת מחדל: 1234)'}
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mr-1">Admin Password:</label>
+                                <div className="bg-white border border-slate-100 p-4 rounded-2xl font-mono text-center font-bold text-black shadow-sm text-lg">
+                                    {studioSettings.admin_password || '1234'}
                                 </div>
                             </div>
                             <form onSubmit={handleUpdatePassword} className="space-y-3 pt-4 border-t border-slate-200">
-                                <p className="text-[11px] text-slate-500">הזיני סיסמה חדשה ועדכני את המערכת:</p>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Change Admin Key:</p>
                                 <div className="flex gap-2">
                                     <input 
                                         type="text" 
                                         value={newPassword} 
                                         onChange={(e) => setNewPassword(e.target.value)} 
-                                        placeholder="סיסמה חדשה..." 
-                                        className="flex-1 p-3 bg-white border border-slate-200 rounded-xl text-sm focus:ring-1 focus:ring-black outline-none transition shadow-sm" 
+                                        placeholder="New key..." 
+                                        className="flex-1 p-3 bg-white border border-slate-100 rounded-xl text-sm focus:ring-1 focus:ring-black outline-none transition shadow-sm" 
                                     />
                                     <button 
                                         type="submit" 
@@ -321,7 +367,7 @@ export function ClientRegistry({ onBack }: { onBack: () => void }) {
                                             <div className="mt-2 bg-white/50 p-2 rounded-lg text-[10px] text-slate-600 space-y-2 border border-red-100">
                                                 <div className="flex items-start gap-1">
                                                     <AlertTriangle size={12} className="shrink-0 mt-0.5 text-orange-500" />
-                                                    <p>יש להריץ את קוד התיקון ב-SQL Editor של Supabase כדי לאפשר שינויים.</p>
+                                                    <p>יש להריץ את קוד התיקון ב-SQL Editor של Supabase.</p>
                                                 </div>
                                                 <button 
                                                     type="button" 
