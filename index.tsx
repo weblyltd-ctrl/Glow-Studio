@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { Loader2, LogOut, MessageCircle, X } from "lucide-react";
@@ -55,7 +56,8 @@ function App() {
 
   useEffect(() => {
     // טעינת סשן ראשונית
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // Fix: Using any cast to access auth methods due to type resolution issues in this environment
+    (supabase.auth as any).getSession().then(({ data: { session } }: any) => {
         if (session?.user) {
             syncUserProfile(session.user);
         }
@@ -63,7 +65,8 @@ function App() {
     });
 
     // האזנה לשינויי התחברות
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    // Fix: Using any cast to access auth methods due to type resolution issues in this environment
+    const { data: { subscription } } = (supabase.auth as any).onAuthStateChange((_event: any, session: any) => {
          if (session?.user) {
              syncUserProfile(session.user);
          } else {

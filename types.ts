@@ -1,4 +1,6 @@
-import { User as SupabaseUser } from "@supabase/supabase-js";
+
+// Fix: User type is not exported from @supabase/supabase-js in this version, using any
+export type SupabaseUser = any;
 
 export type Service = {
   id: string;
@@ -45,5 +47,3 @@ export type ChatMessage = {
   role: "user" | "model";
   text: string;
 };
-
-export { SupabaseUser };

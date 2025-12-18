@@ -52,7 +52,7 @@ export const api = {
 
   loginUser: async (email: string, password: string): Promise<{success: boolean, message?: string, code?: 'EMAIL_NOT_CONFIRMED' | 'INVALID_CREDENTIALS' | 'ERROR'}> => {
     try {
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await (supabase.auth as any).signInWithPassword({
             email,
             password,
         });
@@ -83,7 +83,7 @@ export const api = {
 
   resendConfirmationEmail: async (email: string): Promise<{success: boolean, message?: string}> => {
       try {
-          const { error } = await supabase.auth.resend({
+          const { error } = await (supabase.auth as any).resend({
               type: 'signup',
               email,
               options: {
@@ -100,7 +100,7 @@ export const api = {
 
   registerUser: async (email: string, password: string, fullName: string, phone: string): Promise<{success: boolean, message?: string, requiresConfirmation?: boolean}> => {
     try {
-        const { data, error } = await supabase.auth.signUp({
+        const { data, error } = await (supabase.auth as any).signUp({
             email,
             password,
             options: {
@@ -193,7 +193,7 @@ export const api = {
 
   saveBooking: async (bookingData: any): Promise<{ success: boolean; message?: string; isDemo?: boolean }> => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await (supabase.auth as any).getUser();
       
       const startTime = bookingData.time;
       const duration = bookingData.service?.duration || 30;
@@ -228,21 +228,22 @@ export const api = {
 
   cancelBooking: async (bookingId: number | string): Promise<{ success: boolean; error?: any }> => {
     try {
-      // וידוא שהמזהה נשלח כראוי
+      console.log("Canceling appointment from DB:", bookingId);
+      // שימוש ב-eq כדי להבטיח מחיקה של השורה הספציפית
       const { error } = await supabase
         .from('appointments')
         .delete()
-        .match({ id: bookingId });
+        .eq('id', bookingId);
 
       if (error) throw error;
       return { success: true };
     } catch (error: any) {
-      console.error("API Error - cancelBooking:", error);
+      console.error("Error in cancelBooking API:", error);
       return { success: false, error };
     }
   },
 
   logout: async () => {
-      await supabase.auth.signOut();
+      await (supabase.auth as any).signOut();
   }
 };

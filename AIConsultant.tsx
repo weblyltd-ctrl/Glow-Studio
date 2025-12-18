@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from "react";
 import { Sparkles, X, Send } from "lucide-react";
 import { GoogleGenAI } from "@google/genai";
@@ -15,11 +16,14 @@ export function AIConsultant({ onClose }: { onClose: () => void }) {
         if (!input.trim()) return;
         const userMsg = input; setInput(''); setMessages(prev => [...prev, { role: 'user', text: userMsg }]); setIsThinking(true);
         try {
+            // Fix: Initializing GoogleGenAI with apiKey from process.env
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            // Fix: Using gemini-3-flash-preview and passing string content directly
             const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash",
-                contents: [{ role: 'user', parts: [{ text: `Glow Studio assistant. Hebrew, short, helpful. User: ${userMsg}` }] }]
+                model: "gemini-3-flash-preview",
+                contents: `Glow Studio assistant. Hebrew, short, helpful. User: ${userMsg}`,
             });
+            // Fix: Extracting text using the text property from GenerateContentResponse
             setMessages(prev => [...prev, { role: 'model', text: response.text || "סליחה, נסי שוב." }]);
         } catch (error) { setMessages(prev => [...prev, { role: 'model', text: "בעיה קטנה, נסי שוב." }]); } finally { setIsThinking(false); }
     };
