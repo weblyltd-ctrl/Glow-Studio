@@ -5,38 +5,28 @@ import { api } from "./api";
 
 export function WelcomeScreen({ onLogin, onRegister, onAdminAccess }: { onLogin: () => void, onRegister: () => void, onAdminAccess: () => void }) {
     return (
-        <div className="flex flex-col items-center justify-center min-h-[85vh] text-center px-4 animate-fade-in relative">
-            <div className="absolute top-4 right-6 text-[11px] font-serif text-slate-400">בס"ד</div>
-            
-            <div className="mb-16 space-y-0">
+        <div className="flex flex-col items-center justify-center min-h-[80vh] text-center px-4 animate-fade-in relative">
+            <div className="mb-12 space-y-0">
                 <div className="flex justify-center mb-[-25px] opacity-80">
                    <svg width="180" height="60" viewBox="0 0 120 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M10 32C35 15 85 15 110 32" stroke="black" strokeWidth="0.3" strokeLinecap="round" strokeDasharray="1 0.5"/>
                         <path d="M12 30C37 12 83 12 108 30" stroke="black" strokeWidth="0.6" strokeLinecap="round"/>
-                        <path d="M15 28C40 10 80 10 105 28" stroke="black" strokeWidth="0.2" strokeLinecap="round"/>
                    </svg>
                 </div>
-                
-                <h1 className="logo-ls text-9xl font-medium text-black leading-none select-none">LS</h1>
-                <div className="tracking-[0.3em] text-sm font-medium text-black mt-2 select-none">EYEBROW ARTIST</div>
-                <div className="text-[11px] text-slate-500 font-serif italic pt-3 select-none">BY ~ Lian.shemesh</div>
+                <h1 className="logo-ls text-9xl font-medium text-black leading-none">LS</h1>
+                <div className="tracking-[0.3em] text-sm font-medium text-black mt-2">EYEBROW ARTIST</div>
+                <div className="text-[10px] text-slate-400 italic pt-3">BY ~ Lian.shemesh</div>
             </div>
-
-            <div className="w-full max-w-xs space-y-3 pt-12">
-                <button onClick={onLogin} className="w-full bg-black text-white py-4 rounded-full font-bold shadow-xl hover:bg-slate-800 transition-all flex items-center justify-center gap-2 transform active:scale-95">
+            <div className="w-full max-w-xs space-y-3">
+                <button onClick={onLogin} className="w-full bg-black text-white py-4 rounded-full font-bold shadow-xl flex items-center justify-center gap-2 transform active:scale-95 transition-all">
                     <LogIn size={18} />
                     <span>כניסה למערכת</span>
                 </button>
-                <button onClick={onRegister} className="w-full bg-white text-black border border-slate-200 py-4 rounded-full font-bold hover:bg-slate-50 transition-all flex items-center justify-center gap-2 transform active:scale-95">
+                <button onClick={onRegister} className="w-full bg-white text-black border border-slate-200 py-4 rounded-full font-bold flex items-center justify-center gap-2 transform active:scale-95 transition-all">
                     <UserPlus size={18} />
                     <span>הרשמה מהירה</span>
                 </button>
-                
                 <div className="pt-10">
-                    <button 
-                        onClick={onAdminAccess} 
-                        className="text-slate-300 hover:text-black transition-colors text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 mx-auto py-2"
-                    >
+                    <button onClick={onAdminAccess} className="text-slate-300 hover:text-black transition-colors text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 mx-auto py-2">
                         <Settings size={12} />
                         <span>Admin Access</span>
                     </button>
@@ -55,14 +45,31 @@ export function ManageLogin({ onLoginSuccess, onBack, onGoToRegister }: { onLogi
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (loading) return;
         setLoading(true);
         setError(null);
-        const res = await api.loginUser(identity, password);
-        setLoading(false);
-        if (res.success) {
-            onLoginSuccess();
-        } else {
-            setError(res.message || "פרטי התחברות שגויים. וודאי שהמייל והסיסמה נכונים.");
+        
+        // טיימאאוט הגנה מקומי לממשק
+        const timeout = setTimeout(() => {
+            if (loading) {
+                setLoading(false);
+                setError("ההתחברות לוקחת זמן רב מהרגיל. וודאי שיש קליטה.");
+            }
+        }, 12000);
+
+        try {
+            const res = await api.loginUser(identity, password);
+            clearTimeout(timeout);
+            if (res.success) {
+                onLoginSuccess();
+            } else {
+                setError(res.message || "פרטים לא נכונים");
+                setLoading(false);
+            }
+        } catch (err: any) {
+            clearTimeout(timeout);
+            setError(err.message || "שגיאת תקשורת");
+            setLoading(false);
         }
     };
 
@@ -77,14 +84,14 @@ export function ManageLogin({ onLoginSuccess, onBack, onGoToRegister }: { onLogi
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mr-1">אימייל או טלפון</label>
                     <div className="relative">
                         <User className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                        <input type="text" value={identity} onChange={(e) => setIdentity(e.target.value)} required className="w-full p-4 pr-12 bg-white border border-slate-100 rounded-2xl focus:outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="your@email.com" />
+                        <input type="text" value={identity} onChange={(e) => setIdentity(e.target.value)} required className="w-full p-4 pr-12 bg-white border border-slate-100 rounded-2xl focus:ring-1 focus:ring-black outline-none transition shadow-sm" placeholder="אימייל או נייד" />
                     </div>
                 </div>
                 <div className="space-y-1">
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mr-1">סיסמה</label>
                     <div className="relative">
-                        <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full p-4 bg-white border border-slate-100 rounded-2xl focus:outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="******" />
-                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition">{showPassword ? <EyeOff size={20} /> : <Eye size={20} />}</button>
+                        <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full p-4 bg-white border border-slate-100 rounded-2xl focus:ring-1 focus:ring-black outline-none transition shadow-sm" placeholder="******" />
+                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">{showPassword ? <EyeOff size={20} /> : <Eye size={20} />}</button>
                     </div>
                 </div>
                 {error && (
@@ -93,9 +100,11 @@ export function ManageLogin({ onLoginSuccess, onBack, onGoToRegister }: { onLogi
                          <span>{error}</span>
                     </div>
                 )}
-                <button type="submit" disabled={loading} className="w-full bg-black text-white py-4 rounded-full font-bold disabled:opacity-50 shadow-lg hover:bg-slate-800 transition-all flex items-center justify-center transform active:scale-95">{loading ? <Loader2 className="animate-spin" /> : 'התחברות'}</button>
+                <button type="submit" disabled={loading} className="w-full bg-black text-white py-4 rounded-full font-bold disabled:opacity-50 shadow-lg flex items-center justify-center transform active:scale-95 transition-all">
+                    {loading ? <Loader2 className="animate-spin" /> : 'התחברות'}
+                </button>
                 <div className="text-center pt-4">
-                    <button type="button" onClick={onGoToRegister} className="text-sm text-slate-400 hover:text-black transition">עדיין אין לך חשבון? <span className="font-bold text-black border-b border-black/20 pb-0.5">להרשמה מהירה</span></button>
+                    <button type="button" onClick={onGoToRegister} className="text-sm text-slate-400">עדיין אין לך חשבון? <span className="font-bold text-black border-b border-black/20 pb-0.5">להרשמה מהירה</span></button>
                 </div>
             </form>
         </div>
@@ -114,33 +123,34 @@ export function Register({ onRegisterSuccess, onBack, onGoToLogin }: { onRegiste
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (loading) return;
         setLoading(true);
         setError(null);
-        const res = await api.registerUser(email, password, fullName, phone);
-        setLoading(false);
-        if (res.success) {
-            setIsRegistered(true);
-        } else {
-            setError(res.message || "שגיאה בתהליך ההרשמה. ייתכן והאימייל כבר בשימוש.");
+        try {
+            const res = await api.registerUser(email, password, fullName, phone);
+            if (res.success) {
+                setIsRegistered(true);
+            } else {
+                setError(res.message || "שגיאה בהרשמה");
+                setLoading(false);
+            }
+        } catch (err: any) {
+            setError("שגיאת תקשורת");
+            setLoading(false);
         }
     };
 
     if (isRegistered) {
         return (
             <div className="space-y-8 animate-scale-in text-center py-10 max-w-sm mx-auto">
-                <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto shadow-sm">
-                    <CheckCircle size={48} />
+                <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto shadow-sm">
+                    <CheckCircle size={40} />
                 </div>
                 <div className="space-y-2">
-                    <h2 className="text-3xl font-bold text-green-600">תודה על הרשמתך!</h2>
-                    <p className="text-slate-500">החשבון שלך נוצר בהצלחה. כעת את יכולה להתחבר ולקבוע תור.</p>
+                    <h2 className="text-2xl font-bold text-green-700">תודה על הרשמתך!</h2>
+                    <p className="text-slate-500 text-sm">החשבון נוצר בהצלחה. כעת ניתן להתחבר.</p>
                 </div>
-                <div className="pt-6">
-                    <button onClick={onGoToLogin} className="w-full bg-black text-white py-4 rounded-full font-bold shadow-xl hover:bg-slate-800 transition-all flex items-center justify-center gap-2 transform active:scale-95">
-                        <LogIn size={18} />
-                        <span>התחברי כעת</span>
-                    </button>
-                </div>
+                <button onClick={onGoToLogin} className="w-full bg-black text-white py-4 rounded-full font-bold shadow-xl transform active:scale-95 transition-all">התחברי כעת</button>
             </div>
         );
     }
@@ -156,35 +166,34 @@ export function Register({ onRegisterSuccess, onBack, onGoToLogin }: { onRegiste
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mr-1">שם מלא</label>
                     <div className="relative">
                         <User className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                        <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} required className="w-full p-4 pr-12 bg-white border border-slate-100 rounded-2xl focus:outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="שם מלא" />
+                        <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} required className="w-full p-4 pr-12 bg-white border border-slate-100 rounded-2xl outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="שם מלא" />
                     </div>
                 </div>
                 <div className="space-y-1">
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mr-1">אימייל (שם משתמש)</label>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mr-1">אימייל</label>
                     <div className="relative">
                         <Mail className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full p-4 pr-12 bg-white border border-slate-100 rounded-2xl focus:outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="your@email.com" />
+                        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full p-4 pr-12 bg-white border border-slate-100 rounded-2xl outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="your@email.com" />
                     </div>
                 </div>
                  <div className="space-y-1">
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mr-1">מספר טלפון</label>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mr-1">טלפון</label>
                     <div className="relative">
                         <Phone className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                        <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required className="w-full p-4 pr-12 bg-white border border-slate-100 rounded-2xl focus:outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="050-1234567" maxLength={10} />
+                        <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required className="w-full p-4 pr-12 bg-white border border-slate-100 rounded-2xl outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="050-1234567" maxLength={10} />
                     </div>
                 </div>
                 <div className="space-y-1">
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mr-1">בחרי סיסמה</label>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mr-1">סיסמה</label>
                     <div className="relative">
-                        <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} className="w-full p-4 bg-white border border-slate-100 rounded-2xl focus:outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="לפחות 6 תווים" />
-                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition">{showPassword ? <EyeOff size={20} /> : <Eye size={20} />}</button>
+                        <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} className="w-full p-4 bg-white border border-slate-100 rounded-2xl outline-none focus:ring-1 focus:ring-black transition shadow-sm" placeholder="לפחות 6 תווים" />
+                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">{showPassword ? <EyeOff size={20} /> : <Eye size={20} />}</button>
                     </div>
                 </div>
-                {error && <div className="text-red-700 text-xs bg-red-50 p-4 rounded-2xl border border-red-100 flex items-start gap-2 animate-shake"><AlertCircle size={16} className="shrink-0 mt-0.5" /><span className="whitespace-pre-wrap">{error}</span></div>}
-                <button type="submit" disabled={loading} className="w-full bg-black text-white py-4 rounded-full font-bold disabled:opacity-50 shadow-lg hover:bg-slate-800 transition-all flex items-center justify-center transform active:scale-95">{loading ? <Loader2 className="animate-spin" /> : 'סיום והרשמה'}</button>
-                <div className="text-center pt-4">
-                    <button type="button" onClick={onGoToLogin} className="text-sm text-slate-400 hover:text-black transition">כבר יש לך חשבון? <span className="font-bold text-black border-b border-black/20 pb-0.5">להתחברות</span></button>
-                </div>
+                {error && <div className="text-red-700 text-xs bg-red-50 p-4 rounded-2xl border border-red-100 animate-shake flex items-center gap-2"><AlertCircle size={16} />{error}</div>}
+                <button type="submit" disabled={loading} className="w-full bg-black text-white py-4 rounded-full font-bold disabled:opacity-50 shadow-lg flex items-center justify-center transform active:scale-95 transition-all">
+                    {loading ? <Loader2 className="animate-spin" /> : 'סיום והרשמה'}
+                </button>
             </form>
         </div>
     );
