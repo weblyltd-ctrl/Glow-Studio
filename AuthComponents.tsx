@@ -42,7 +42,6 @@ export function ManageLogin({ onLoginSuccess, onBack, onGoToRegister }: { onLogi
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [showDebug, setShowDebug] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -63,8 +62,6 @@ export function ManageLogin({ onLoginSuccess, onBack, onGoToRegister }: { onLogi
             setLoading(false);
         }
     };
-
-    const config = checkConfigStatus();
 
     return (
         <div className="space-y-8 animate-slide-up max-w-sm mx-auto">
@@ -94,14 +91,6 @@ export function ManageLogin({ onLoginSuccess, onBack, onGoToRegister }: { onLogi
                             <AlertCircle size={14} className="shrink-0 mt-0.5" />
                             <span>{error}</span>
                          </div>
-                         <button type="button" onClick={() => setShowDebug(!showDebug)} className="text-[9px] font-bold underline text-red-400 self-start">מידע טכני לתיקון</button>
-                         {showDebug && (
-                             <div className="mt-2 p-2 bg-white/50 rounded-lg font-mono text-[9px] space-y-1 border border-red-100">
-                                 <div>URL: {config.url} {config.hasUrl ? '✅' : '❌'}</div>
-                                 <div>KEY: {config.hasKey ? 'תקין ✅' : 'חסר/קצר מדי ❌'}</div>
-                                 <div className="text-slate-400 pt-1">אם ה-Key מסומן כ-❌, העתיקי מ-Supabase את ה-Anon Key.</div>
-                             </div>
-                         )}
                     </div>
                 )}
 
