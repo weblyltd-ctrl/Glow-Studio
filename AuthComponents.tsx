@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from "react";
-import { LogIn, UserPlus, ChevronRight, AlertCircle, Loader2, User, Phone, Eye, EyeOff, Settings, Mail, CheckCircle } from "lucide-react";
-import { api } from "./api";
+import { LogIn, UserPlus, ChevronRight, AlertCircle, Loader2, User, Phone, Eye, EyeOff, Settings, Mail, CheckCircle, HelpCircle, X } from "lucide-react";
+import { api, checkConfigStatus } from "./api";
 
 export function WelcomeScreen({ onLogin, onRegister, onAdminAccess }: { onLogin: () => void, onRegister: () => void, onAdminAccess: () => void }) {
     return (
@@ -42,6 +42,7 @@ export function ManageLogin({ onLoginSuccess, onBack, onGoToRegister }: { onLogi
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [showDebug, setShowDebug] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -49,17 +50,8 @@ export function ManageLogin({ onLoginSuccess, onBack, onGoToRegister }: { onLogi
         setLoading(true);
         setError(null);
         
-        // טיימאאוט הגנה מקומי לממשק
-        const timeout = setTimeout(() => {
-            if (loading) {
-                setLoading(false);
-                setError("ההתחברות לוקחת זמן רב מהרגיל. וודאי שיש קליטה.");
-            }
-        }, 12000);
-
         try {
             const res = await api.loginUser(identity, password);
-            clearTimeout(timeout);
             if (res.success) {
                 onLoginSuccess();
             } else {
@@ -67,11 +59,12 @@ export function ManageLogin({ onLoginSuccess, onBack, onGoToRegister }: { onLogi
                 setLoading(false);
             }
         } catch (err: any) {
-            clearTimeout(timeout);
             setError(err.message || "שגיאת תקשורת");
             setLoading(false);
         }
     };
+
+    const config = checkConfigStatus();
 
     return (
         <div className="space-y-8 animate-slide-up max-w-sm mx-auto">
@@ -94,16 +87,34 @@ export function ManageLogin({ onLoginSuccess, onBack, onGoToRegister }: { onLogi
                         <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">{showPassword ? <EyeOff size={20} /> : <Eye size={20} />}</button>
                     </div>
                 </div>
+                
                 {error && (
-                    <div className="p-4 rounded-2xl text-xs bg-red-50 text-red-800 border border-red-100 flex items-start gap-2 animate-shake">
-                         <AlertCircle size={16} className="shrink-0 mt-0.5" />
-                         <span>{error}</span>
+                    <div className="p-4 rounded-2xl text-[11px] bg-red-50 text-red-800 border border-red-100 flex flex-col gap-2 animate-shake">
+                         <div className="flex items-start gap-2">
+                            <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                            <span>{error}</span>
+                         </div>
+                         <button type="button" onClick={() => setShowDebug(!showDebug)} className="text-[9px] font-bold underline text-red-400 self-start">מידע טכני לתיקון</button>
+                         {showDebug && (
+                             <div className="mt-2 p-2 bg-white/50 rounded-lg font-mono text-[9px] space-y-1 border border-red-100">
+                                 <div>URL: {config.url} {config.hasUrl ? '✅' : '❌'}</div>
+                                 <div>KEY: {config.hasKey ? 'תקין ✅' : 'חסר/קצר מדי ❌'}</div>
+                                 <div className="text-slate-400 pt-1">אם ה-Key מסומן כ-❌, העתיקי מ-Supabase את ה-Anon Key.</div>
+                             </div>
+                         )}
                     </div>
                 )}
-                <button type="submit" disabled={loading} className="w-full bg-black text-white py-4 rounded-full font-bold disabled:opacity-50 shadow-lg flex items-center justify-center transform active:scale-95 transition-all">
-                    {loading ? <Loader2 className="animate-spin" /> : 'התחברות'}
-                </button>
-                <div className="text-center pt-4">
+
+                <div className="relative">
+                    <button type="submit" disabled={loading} className="w-full bg-black text-white py-4 rounded-full font-bold disabled:opacity-50 shadow-lg flex items-center justify-center transform active:scale-95 transition-all">
+                        {loading ? <Loader2 className="animate-spin" /> : 'התחברות'}
+                    </button>
+                    {loading && (
+                        <button type="button" onClick={() => setLoading(false)} className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[10px] text-slate-400 underline">ביטול וניסיון חוזר</button>
+                    )}
+                </div>
+
+                <div className="text-center pt-8">
                     <button type="button" onClick={onGoToRegister} className="text-sm text-slate-400">עדיין אין לך חשבון? <span className="font-bold text-black border-b border-black/20 pb-0.5">להרשמה מהירה</span></button>
                 </div>
             </form>

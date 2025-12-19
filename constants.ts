@@ -1,9 +1,15 @@
 
 import { Service } from "./types";
 
-// המשתנים יימשכו מ-Vercel. אם את מריצה מקומית, ודאי שיש לך קובץ .env
-export const SUPABASE_URL = process.env.SUPABASE_URL || "https://gkdhgxpjkhucdanougua.supabase.co";
-export const SUPABASE_ANON_KEY = process.env.SUPABASE_KEY || ""; 
+// ב-Vite אנחנו משתמשים ב-define שהגדרנו ב-vite.config.ts
+// או בגישה ישירה למשתני הסביבה שהוזרקו
+const getEnv = (key: string) => {
+    // @ts-ignore
+    return process.env[key] || "";
+};
+
+export const SUPABASE_URL = getEnv('SUPABASE_URL');
+export const SUPABASE_ANON_KEY = getEnv('SUPABASE_KEY'); 
 
 export const BUSINESS_INFO = {
   name: "LS Eyebrow Artist",

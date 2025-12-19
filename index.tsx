@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { Loader2, LogOut, MessageCircle, X, AlertCircle } from "lucide-react";
-import { supabase, api } from "./api";
+import { supabase, api, checkConfigStatus } from "./api";
 import { SERVICES } from "./constants";
 import { AppointmentState } from "./types";
 import { WelcomeScreen, ManageLogin, Register } from "./AuthComponents";
@@ -28,6 +28,7 @@ function App() {
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
+  const [showConfigAlert, setShowConfigAlert] = useState(false);
   
   const isSyncingRef = useRef(false);
 
@@ -55,6 +56,16 @@ function App() {
   useEffect(() => {
     let mounted = true;
 
+    // מנגנון בטיחות: אם אחרי 5 שניות האתר עדיין בטעינה, נשחרר אותו
+    const safetyTimeout = setTimeout(() => {
+        if (mounted && isLoadingSession) {
+            console.warn("Session loading timed out - forcing app start");
+            setIsLoadingSession(false);
+            const config = checkConfigStatus();
+            if (!config.hasKey || !config.hasUrl) setShowConfigAlert(true);
+        }
+    }, 5000);
+
     // קבלת סשן מהיר בטעינה
     supabase.auth.getSession().then(({ data: { session } }) => {
         if (mounted) {
@@ -63,7 +74,11 @@ function App() {
             } else {
                 setIsLoadingSession(false);
             }
+            clearTimeout(safetyTimeout);
         }
+    }).catch(err => {
+        console.error("Supabase session error:", err);
+        if (mounted) setIsLoadingSession(false);
     });
 
     // האזנה לשינויי סטטוס (התחברות/התנתקות)
@@ -79,8 +94,9 @@ function App() {
     return () => {
         mounted = false;
         subscription.unsubscribe();
+        clearTimeout(safetyTimeout);
     };
-  }, [syncUserProfile]);
+  }, [syncUserProfile, isLoadingSession]);
 
   const resetBookingFlow = () => {
     setState(prev => ({
@@ -116,14 +132,23 @@ function App() {
 
   if (isLoadingSession) {
       return (
-          <div className="min-h-screen flex items-center justify-center bg-[#fcf9f7]">
-              <Loader2 className="animate-spin text-slate-200" size={40} />
+          <div className="min-h-screen flex flex-col items-center justify-center bg-[#fcf9f7] gap-4">
+              <Loader2 className="animate-spin text-slate-300" size={40} />
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest animate-pulse">מתחברת למערכת...</p>
           </div>
       )
   }
 
+  const config = checkConfigStatus();
+
   return (
     <div className="min-h-screen bg-[#fcf9f7] text-slate-900 font-sans relative overflow-x-hidden">
+      {showConfigAlert && (
+          <div className="bg-red-600 text-white text-[10px] py-1 text-center font-bold tracking-widest animate-fade-in">
+              שימי לב: הגדרות המערכת ב-Vercel לא הושלמו. האתר יעבוד במצב הדגמה בלבד.
+          </div>
+      )}
+      
       {!["welcome"].includes(state.step) && (
           <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100">
             <div className="w-full max-w-lg mx-auto px-4 py-4 flex items-center justify-between">

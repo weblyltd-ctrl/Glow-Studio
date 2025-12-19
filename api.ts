@@ -4,54 +4,49 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, SERVICES } from "./constants";
 import { ClientBooking, ClientProfile } from "./types";
 import { getDateKey, addMinutesStr } from "./utils";
 
-// פונקציית עזר להוספת טיימאאוט להבטחות (Promises)
-// Fix: Use any return type to avoid destructuring errors with Supabase query builders
-const withTimeout = (promise: any, ms: number = 8000): Promise<any> => {
+// פונקציית עזר להוספת טיימאאוט קשיח לכל קריאה
+const withTimeout = (promise: any, ms: number = 7000): Promise<any> => {
   return Promise.race([
     promise,
     new Promise<any>((_, reject) =>
-      setTimeout(() => reject(new Error("זמן התגובה מהשרת חרג מהמותר. בדקי חיבור אינטרנט או מפתחות.")), ms)
+      setTimeout(() => reject(new Error("TIMEOUT")), ms)
     ),
   ]);
 };
 
-const isConfigValid = SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_ANON_KEY.length > 10;
+// בדיקה אם המפתחות קיימים באמת
+export const checkConfigStatus = () => {
+    return {
+        hasUrl: typeof SUPABASE_URL === 'string' && SUPABASE_URL.startsWith('http'),
+        hasKey: typeof SUPABASE_ANON_KEY === 'string' && SUPABASE_ANON_KEY.length > 20,
+        url: SUPABASE_URL || 'missing',
+        keyStatus: SUPABASE_ANON_KEY ? 'present' : 'missing'
+    };
+};
 
-export const supabase = createClient(
-  SUPABASE_URL || "https://placeholder.supabase.co", 
-  SUPABASE_ANON_KEY || "missing-key",
-  {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true
-    }
-  }
-);
+// אתחול בטוח
+const safeUrl = (typeof SUPABASE_URL === 'string' && SUPABASE_URL.length > 5) ? SUPABASE_URL : "https://placeholder.supabase.co";
+const safeKey = (typeof SUPABASE_ANON_KEY === 'string' && SUPABASE_ANON_KEY.length > 5) ? SUPABASE_ANON_KEY : "missing";
+
+export const supabase = createClient(safeUrl, safeKey);
 
 export const api = {
   fetchBookedSlots: async (): Promise<{ connected: boolean; slots: Record<string, string[]>; error?: string }> => {
-    if (!isConfigValid) return { connected: false, slots: {}, error: "חסר SUPABASE_KEY ב-Vercel" };
+    const config = checkConfigStatus();
+    if (!config.hasUrl || !config.hasKey) return { connected: false, slots: {}, error: "Config Missing" };
     try {
-      const { data, error } = await withTimeout(supabase
-        .from('appointments')
-        .select('date, time, service'));
-        
+      const { data, error } = await withTimeout(supabase.from('appointments').select('date, time, service'));
       if (error) throw error;
       const normalizedData: Record<string, string[]> = {};
-      
       data?.forEach((row: any) => {
           const dateKey = row.date;
           const timeRange = row.time;
           const startTime = timeRange.includes('-') ? timeRange.split('-')[0] : timeRange;
-          
           if (!normalizedData[dateKey]) normalizedData[dateKey] = [];
-          if (!normalizedData[dateKey].includes(startTime)) normalizedData[dateKey].push(startTime);
-
+          normalizedData[dateKey].push(startTime);
           let duration = 30;
           const matched = SERVICES.find(s => s.name === row.service);
           if (matched) duration = matched.duration;
-
           const slotsToBlock = Math.ceil(duration / 30);
           for (let i = 1; i < slotsToBlock; i++) {
                 const nextSlot = addMinutesStr(startTime, i * 30);
@@ -64,8 +59,7 @@ export const api = {
     }
   },
 
-  loginUser: async (identity: string, password: string): Promise<{success: boolean, message?: string, code?: string}> => {
-    if (!isConfigValid) return { success: false, message: "הגדרות המערכת לא הושלמו" };
+  loginUser: async (identity: string, password: string): Promise<{success: boolean, message?: string}> => {
     try {
         let authParams: any = { password };
         if (identity.includes('@')) {
@@ -75,39 +69,26 @@ export const api = {
             authParams.phone = `+972${phoneDigits.startsWith('0') ? phoneDigits.slice(1) : phoneDigits}`;
         }
         
-        const { data: authData, error: authError } = await withTimeout((supabase.auth as any).signInWithPassword(authParams), 10000);
-        
+        const { data: authData, error: authError } = await withTimeout(supabase.auth.signInWithPassword(authParams), 8000);
         if (authError) throw authError;
-
-        // עדכון פרופיל שקט לאחר התחברות
-        try {
-            await supabase.from('clients').upsert([{
-                id: authData.user.id,
-                email: authData.user.email,
-                full_name: authData.user.user_metadata?.full_name || "לקוחה",
-                phone: authData.user.user_metadata?.phone || ""
-            }]);
-        } catch (e) { /* ignore quiet errors */ }
 
         return { success: true };
     } catch (error: any) {
+        if (error.message === "TIMEOUT") return { success: false, message: "השרת לא עונה. וודאי שהמפתחות ב-Vercel תקינים." };
         let msg = error.message;
         if (msg === "Invalid login credentials") msg = "אימייל או סיסמה לא נכונים";
-        else if (msg.includes("API key")) msg = "שגיאת אבטחה: המפתח ב-Vercel לא תקין";
         return { success: false, message: msg };
     }
   },
 
   registerUser: async (email: string, password: string, fullName: string, phone: string): Promise<{success: boolean, message?: string}> => {
-    if (!isConfigValid) return { success: false, message: "הגדרות המערכת לא הושלמו" };
     try {
         const phoneDigits = phone.replace(/\D/g, '');
-        const { data, error } = await withTimeout((supabase.auth as any).signUp({
+        const { data, error } = await withTimeout(supabase.auth.signUp({
             email: email.trim().toLowerCase(),
             password: password,
             options: { data: { full_name: fullName, phone: phoneDigits } }
-        }), 12000);
-        
+        }), 10000);
         if (error) throw error;
         if (data.user) {
             await supabase.from('clients').upsert([{
@@ -135,7 +116,7 @@ export const api = {
 
   fetchUserProfile: async (userId: string): Promise<Partial<ClientProfile> | null> => {
       try {
-          const { data, error } = await withTimeout(supabase.from('clients').select('full_name, phone, email').eq('id', userId).single(), 5000);
+          const { data, error } = await withTimeout(supabase.from('clients').select('full_name, phone, email').eq('id', userId).single(), 4000);
           if (error) return null;
           return data;
       } catch (e) { return null; }
@@ -159,9 +140,8 @@ export const api = {
 
   saveBooking: async (bookingData: any): Promise<{ success: boolean; message?: string; isDemo?: boolean }> => {
     try {
-      const { data: { session } } = await (supabase.auth as any).getSession();
+      const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
-      
       const payload = {
         date: getDateKey(new Date(bookingData.date)), 
         time: `${bookingData.time}-${addMinutesStr(bookingData.time, bookingData.service.duration)}`,
@@ -170,7 +150,6 @@ export const api = {
         client_phone: bookingData.clientPhone,
         user_id: userId || null
       };
-
       const { error } = await withTimeout(supabase.from('appointments').insert([payload]));
       if (error) {
           if (error.message.includes("row-level security")) return { success: true, isDemo: true };
@@ -182,7 +161,6 @@ export const api = {
     }
   },
 
-  // Fix: Added verifyAdminPassword method for DashboardComponents
   verifyAdminPassword: async (password: string): Promise<{ success: boolean; message?: string }> => {
     try {
       const { data, error } = await withTimeout(supabase.from('studio_settings').select('admin_password').single());
@@ -195,7 +173,6 @@ export const api = {
     }
   },
 
-  // Fix: Added cancelBooking method for DashboardComponents
   cancelBooking: async (bookingId: string): Promise<{ success: boolean; error?: string }> => {
     try {
       const { error } = await withTimeout(supabase.from('appointments').delete().eq('id', bookingId));
@@ -206,7 +183,6 @@ export const api = {
     }
   },
 
-  // Fix: Added fetchSettings method for DashboardComponents
   fetchSettings: async (): Promise<Record<string, string>> => {
     try {
       const { data, error } = await withTimeout(supabase.from('studio_settings').select('*').single());
@@ -215,7 +191,6 @@ export const api = {
     } catch (e) { return { admin_password: '1234' }; }
   },
 
-  // Fix: Added updateAdminPassword method for DashboardComponents
   updateAdminPassword: async (newPassword: string): Promise<{ success: boolean; message?: string }> => {
     try {
       const { error } = await withTimeout(supabase.from('studio_settings').upsert({ id: 1, admin_password: newPassword }));
@@ -229,5 +204,5 @@ export const api = {
     }
   },
 
-  logout: async () => { await (supabase.auth as any).signOut(); }
+  logout: async () => { await supabase.auth.signOut(); }
 };
