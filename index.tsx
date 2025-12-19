@@ -1,32 +1,14 @@
 
-import React, { useState, useEffect, useCallback, useRef, Suspense, lazy } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { Loader2, LogOut, MessageCircle, X } from "lucide-react";
 import { supabase, api, checkConfigStatus } from "./api";
 import { SERVICES } from "./constants";
 import { AppointmentState } from "./types";
-
-// Lazy loading non-critical components to improve FCP/LCP
-const WelcomeScreen = lazy(() => import("./AuthComponents").then(m => ({ default: m.WelcomeScreen })));
-const ManageLogin = lazy(() => import("./AuthComponents").then(m => ({ default: m.ManageLogin })));
-const Register = lazy(() => import("./AuthComponents").then(m => ({ default: m.Register })));
-const HeroSection = lazy(() => import("./DashboardComponents").then(m => ({ default: m.HeroSection })));
-const ManageList = lazy(() => import("./DashboardComponents").then(m => ({ default: m.ManageList })));
-const ClientRegistry = lazy(() => import("./DashboardComponents").then(m => ({ default: m.ClientRegistry })));
-const AdminAuth = lazy(() => import("./DashboardComponents").then(m => ({ default: m.AdminAuth })));
-const ServiceSelection = lazy(() => import("./BookingComponents").then(m => ({ default: m.ServiceSelection })));
-const DateSelection = lazy(() => import("./BookingComponents").then(m => ({ default: m.DateSelection })));
-const Confirmation = lazy(() => import("./BookingComponents").then(m => ({ default: m.Confirmation })));
-const WaitingListConfirmation = lazy(() => import("./BookingComponents").then(m => ({ default: m.WaitingListConfirmation })));
-const AIConsultant = lazy(() => import("./AIConsultant").then(m => ({ default: m.AIConsultant })));
-
-function LoadingFallback() {
-  return (
-    <div className="flex items-center justify-center p-20 animate-fade-in">
-      <Loader2 className="animate-spin text-slate-300" size={32} />
-    </div>
-  );
-}
+import { WelcomeScreen, ManageLogin, Register } from "./AuthComponents";
+import { HeroSection, ManageList, ClientRegistry, AdminAuth } from "./DashboardComponents";
+import { ServiceSelection, DateSelection, Confirmation, WaitingListConfirmation } from "./BookingComponents";
+import { AIConsultant } from "./AIConsultant";
 
 function App() {
   const [state, setState] = useState<AppointmentState>({
@@ -74,7 +56,7 @@ function App() {
   useEffect(() => {
     let mounted = true;
 
-    // Safety timeout reduced to 3s for better perceived speed
+    // Safety timeout to prevent infinite loader
     const safetyTimeout = setTimeout(() => {
         if (mounted && isLoadingSession) {
             setIsLoadingSession(false);
@@ -146,32 +128,24 @@ function App() {
 
   if (isLoadingSession) {
       return (
-          <div className="min-h-screen flex flex-col items-center justify-center bg-[#fcf9f7]">
-              <div className="logo-ls text-4xl mb-4 animate-pulse">LS</div>
-              <div className="w-48 h-1 bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-black animate-[loading_1.5s_infinite_linear]"></div>
-              </div>
-              <style>{`
-                @keyframes loading {
-                  0% { transform: translateX(-100%); }
-                  100% { transform: translateX(100%); }
-                }
-              `}</style>
+          <div className="min-h-screen flex flex-col items-center justify-center bg-[#fcf9f7] gap-4">
+              <Loader2 className="animate-spin text-slate-300" size={32} />
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest animate-pulse">מתחברת...</p>
           </div>
       )
   }
 
   return (
-    <div className="min-h-screen bg-[#fcf9f7] text-slate-900 font-sans relative overflow-x-hidden antialiased">
+    <div className="min-h-screen bg-[#fcf9f7] text-slate-900 font-sans relative overflow-x-hidden">
       {showConfigAlert && (
-          <div className="bg-red-600 text-white text-[10px] py-1 text-center font-bold tracking-widest animate-fade-in sticky top-0 z-50">
-              מצב הדגמה - הגדרות שרת חסרות
+          <div className="bg-red-600 text-white text-[10px] py-1 text-center font-bold tracking-widest animate-fade-in">
+              מצב הדגמה בלבד
           </div>
       )}
       
       {!["welcome"].includes(state.step) && (
           <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100">
-            <div className="w-full max-w-lg mx-auto px-4 py-4 flex items-center justify-between">
+            <div className="w-full max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
               <div className="flex items-center gap-3 cursor-pointer" onClick={resetBookingFlow}>
                 <div className="logo-ls text-2xl font-medium text-black">LS</div>
                 <div className="h-4 w-px bg-slate-200"></div>
@@ -179,49 +153,36 @@ function App() {
               </div>
               <div className="flex items-center gap-4">
                  {state.currentUser && (
-                    <button onClick={() => api.logout()} className="p-2 text-slate-400 hover:text-red-500 active:scale-90 transition-all"><LogOut size={18} /></button>
+                    <button onClick={() => api.logout()} className="text-slate-400 hover:text-red-500 transition-colors p-1"><LogOut size={18} /></button>
                  )}
                  {state.step !== "home" && (
-                    <button onClick={resetBookingFlow} className="text-xs font-bold uppercase tracking-widest text-slate-400 hover:text-black active:scale-95 px-2 py-1">חזרה</button>
+                    <button onClick={resetBookingFlow} className="text-xs font-bold uppercase tracking-widest text-slate-400 p-1">חזרה</button>
                  )}
               </div>
             </div>
           </header>
       )}
-
-      <main className="w-full max-w-lg mx-auto px-4 py-6 sm:py-8">
-        <Suspense fallback={<LoadingFallback />}>
-          {state.step === "welcome" && <WelcomeScreen onLogin={() => nextStep("login")} onRegister={() => nextStep("register")} onAdminAccess={() => nextStep("admin-auth")} />}
-          {state.step === "login" && <ManageLogin onLoginSuccess={() => {}} onBack={() => nextStep("welcome")} onGoToRegister={() => nextStep("register")} />}
-          {state.step === "register" && <Register onRegisterSuccess={() => {}} onBack={() => nextStep("welcome")} onGoToLogin={() => nextStep("login")} />}
-          {state.step === "home" && state.currentUser && <HeroSection userEmail={state.currentUser.email} userName={state.clientName} onStartBooking={() => nextStep("services")} onManageBookings={() => nextStep("manage-list")} />}
-          {state.step === "admin-auth" && <AdminAuth onSuccess={() => nextStep("client-registry")} onBack={() => nextStep(state.currentUser ? "home" : "welcome")} />}
-          {state.step === "services" && <ServiceSelection services={SERVICES} onSelect={(s) => { setState(prev => ({ ...prev, service: s })); nextStep("date"); }} onBack={() => nextStep("home")} />}
-          {state.step === "date" && <DateSelection service={state.service} selectedDate={state.date} selectedTime={state.time} onDateSelect={(d: any) => setState(prev => ({ ...prev, date: d, time: null }))} onTimeSelect={(t: any, wl: any) => setState(prev => ({ ...prev, time: t, isWaitingList: wl }))} onNext={handleBookingSubmit} onBack={() => nextStep("services")} isValid={!!state.date && !!state.time} isLoading={isSubmitting} error={submissionError} />}
-          {state.step === "confirmation" && <Confirmation state={state} onReset={resetBookingFlow} />}
-          {state.step === "waiting-list-confirmed" && <WaitingListConfirmation state={state} onReset={resetBookingFlow} />}
-          {state.step === "manage-list" && state.currentUser && <ManageList userId={state.currentUser.id} onBack={() => nextStep("home")} />}
-          {state.step === "client-registry" && <ClientRegistry onBack={() => nextStep(state.currentUser ? "home" : "welcome")} />}
-        </Suspense>
+      <main className="w-full max-w-lg mx-auto px-4 py-6">
+        {state.step === "welcome" && <WelcomeScreen onLogin={() => nextStep("login")} onRegister={() => nextStep("register")} onAdminAccess={() => nextStep("admin-auth")} />}
+        {state.step === "login" && <ManageLogin onLoginSuccess={() => {}} onBack={() => nextStep("welcome")} onGoToRegister={() => nextStep("register")} />}
+        {state.step === "register" && <Register onRegisterSuccess={() => {}} onBack={() => nextStep("welcome")} onGoToLogin={() => nextStep("login")} />}
+        {state.step === "home" && state.currentUser && <HeroSection userEmail={state.currentUser.email} userName={state.clientName} onStartBooking={() => nextStep("services")} onManageBookings={() => nextStep("manage-list")} />}
+        {state.step === "admin-auth" && <AdminAuth onSuccess={() => nextStep("client-registry")} onBack={() => nextStep(state.currentUser ? "home" : "welcome")} />}
+        {state.step === "services" && <ServiceSelection services={SERVICES} onSelect={(s) => { setState(prev => ({ ...prev, service: s })); nextStep("date"); }} onBack={() => nextStep("home")} />}
+        {state.step === "date" && <DateSelection service={state.service} selectedDate={state.date} selectedTime={state.time} onDateSelect={(d: any) => setState(prev => ({ ...prev, date: d, time: null }))} onTimeSelect={(t: any, wl: any) => setState(prev => ({ ...prev, time: t, isWaitingList: wl }))} onNext={handleBookingSubmit} onBack={() => nextStep("services")} isValid={!!state.date && !!state.time} isLoading={isSubmitting} error={submissionError} />}
+        {state.step === "confirmation" && <Confirmation state={state} onReset={resetBookingFlow} />}
+        {state.step === "waiting-list-confirmed" && <WaitingListConfirmation state={state} onReset={resetBookingFlow} />}
+        {state.step === "manage-list" && state.currentUser && <ManageList userId={state.currentUser.id} onBack={() => nextStep("home")} />}
+        {state.step === "client-registry" && <ClientRegistry onBack={() => nextStep(state.currentUser ? "home" : "welcome")} />}
       </main>
-
       {state.currentUser && !["welcome", "login", "register"].includes(state.step) && (
         <div className="fixed bottom-6 left-6 z-50">
-          <button 
-            onClick={() => setIsChatOpen(!isChatOpen)} 
-            className="bg-black text-white p-4 rounded-full shadow-2xl active:scale-95 hover:scale-105 transition-all flex items-center justify-center"
-            aria-label="צ'אט עם העוזרת החכמה"
-          >
+          <button onClick={() => setIsChatOpen(!isChatOpen)} className="bg-black text-white p-4 rounded-full shadow-2xl hover:scale-105 transition-transform active:scale-90">
             {isChatOpen ? <X size={24} /> : <MessageCircle size={24} />}
           </button>
         </div>
       )}
-      
-      {isChatOpen && (
-        <Suspense fallback={null}>
-          <AIConsultant onClose={() => setIsChatOpen(false)} />
-        </Suspense>
-      )}
+      {isChatOpen && <AIConsultant onClose={() => setIsChatOpen(false)} />}
     </div>
   );
 }

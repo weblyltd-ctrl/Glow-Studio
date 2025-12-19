@@ -1,10 +1,8 @@
-
 import { createClient } from "@supabase/supabase-js";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SERVICES } from "./constants";
 import { ClientBooking, ClientProfile } from "./types";
 import { getDateKey, addMinutesStr } from "./utils";
 
-// פונקציית עזר להוספת טיימאאוט קשיח לכל קריאה
 const withTimeout = (promise: any, ms: number = 7000): Promise<any> => {
   return Promise.race([
     promise,
@@ -14,17 +12,15 @@ const withTimeout = (promise: any, ms: number = 7000): Promise<any> => {
   ]);
 };
 
-// בדיקה אם המפתחות קיימים באמת
 export const checkConfigStatus = () => {
-    return {
-        hasUrl: typeof SUPABASE_URL === 'string' && SUPABASE_URL.startsWith('http'),
-        hasKey: typeof SUPABASE_ANON_KEY === 'string' && SUPABASE_ANON_KEY.length > 20,
-        url: SUPABASE_URL || 'missing',
-        keyStatus: SUPABASE_ANON_KEY ? 'present' : 'missing'
-    };
+  return {
+    hasUrl: typeof SUPABASE_URL === 'string' && SUPABASE_URL.startsWith('http'),
+    hasKey: typeof SUPABASE_ANON_KEY === 'string' && SUPABASE_ANON_KEY.length > 20,
+    url: SUPABASE_URL || 'missing',
+    keyStatus: SUPABASE_ANON_KEY ? 'present' : 'missing'
+  };
 };
 
-// אתחול בטוח
 const safeUrl = (typeof SUPABASE_URL === 'string' && SUPABASE_URL.length > 5) ? SUPABASE_URL : "https://placeholder.supabase.co";
 const safeKey = (typeof SUPABASE_ANON_KEY === 'string' && SUPABASE_ANON_KEY.length > 5) ? SUPABASE_ANON_KEY : "missing";
 
@@ -39,19 +35,19 @@ export const api = {
       if (error) throw error;
       const normalizedData: Record<string, string[]> = {};
       data?.forEach((row: any) => {
-          const dateKey = row.date;
-          const timeRange = row.time;
-          const startTime = timeRange.includes('-') ? timeRange.split('-')[0] : timeRange;
-          if (!normalizedData[dateKey]) normalizedData[dateKey] = [];
-          normalizedData[dateKey].push(startTime);
-          let duration = 30;
-          const matched = SERVICES.find(s => s.name === row.service);
-          if (matched) duration = matched.duration;
-          const slotsToBlock = Math.ceil(duration / 30);
-          for (let i = 1; i < slotsToBlock; i++) {
-                const nextSlot = addMinutesStr(startTime, i * 30);
-                if (!normalizedData[dateKey].includes(nextSlot)) normalizedData[dateKey].push(nextSlot);
-          }
+        const dateKey = row.date;
+        const timeRange = row.time;
+        const startTime = timeRange.includes('-') ? timeRange.split('-')[0] : timeRange;
+        if (!normalizedData[dateKey]) normalizedData[dateKey] = [];
+        normalizedData[dateKey].push(startTime);
+        let duration = 30;
+        const matched = SERVICES.find(s => s.name === row.service);
+        if (matched) duration = matched.duration;
+        const slotsToBlock = Math.ceil(duration / 30);
+        for (let i = 1; i < slotsToBlock; i++) {
+          const nextSlot = addMinutesStr(startTime, i * 30);
+          if (!normalizedData[dateKey].includes(nextSlot)) normalizedData[dateKey].push(nextSlot);
+        }
       });
       return { connected: true, slots: normalizedData };
     } catch (error: any) {
@@ -59,67 +55,67 @@ export const api = {
     }
   },
 
-  loginUser: async (identity: string, password: string): Promise<{success: boolean, message?: string}> => {
+  loginUser: async (identity: string, password: string): Promise<{ success: boolean, message?: string }> => {
     try {
-        let authParams: any = { password };
-        if (identity.includes('@')) {
-            authParams.email = identity.trim().toLowerCase();
-        } else {
-            const phoneDigits = identity.replace(/\D/g, '');
-            authParams.phone = `+972${phoneDigits.startsWith('0') ? phoneDigits.slice(1) : phoneDigits}`;
-        }
-        
-        const { data: authData, error: authError } = await withTimeout(supabase.auth.signInWithPassword(authParams), 8000);
-        if (authError) throw authError;
+      let authParams: any = { password };
+      if (identity.includes('@')) {
+        authParams.email = identity.trim().toLowerCase();
+      } else {
+        const phoneDigits = identity.replace(/\D/g, '');
+        authParams.phone = `+972${phoneDigits.startsWith('0') ? phoneDigits.slice(1) : phoneDigits}`;
+      }
 
-        return { success: true };
+      const { data: authData, error: authError } = await withTimeout(supabase.auth.signInWithPassword(authParams), 8000);
+      if (authError) throw authError;
+
+      return { success: true };
     } catch (error: any) {
-        if (error.message === "TIMEOUT") return { success: false, message: "השרת לא עונה. וודאי שהמפתחות ב-Vercel תקינים." };
-        let msg = error.message;
-        if (msg === "Invalid login credentials") msg = "אימייל או סיסמה לא נכונים";
-        return { success: false, message: msg };
+      if (error.message === "TIMEOUT") return { success: false, message: "השרת לא עונה. וודאי שהמפתחות ב-Vercel תקינים." };
+      let msg = error.message;
+      if (msg === "Invalid login credentials") msg = "אימייל או סיסמה לא נכונים";
+      return { success: false, message: msg };
     }
   },
 
-  registerUser: async (email: string, password: string, fullName: string, phone: string): Promise<{success: boolean, message?: string}> => {
+  registerUser: async (email: string, password: string, fullName: string, phone: string): Promise<{ success: boolean, message?: string }> => {
     try {
-        const phoneDigits = phone.replace(/\D/g, '');
-        const { data, error } = await withTimeout(supabase.auth.signUp({
-            email: email.trim().toLowerCase(),
-            password: password,
-            options: { data: { full_name: fullName, phone: phoneDigits } }
-        }), 10000);
-        if (error) throw error;
-        if (data.user) {
-            await supabase.from('clients').upsert([{
-                id: data.user.id,
-                email: email.trim().toLowerCase(),
-                full_name: fullName,
-                phone: phoneDigits
-            }]);
-        }
-        return { success: true };
+      const phoneDigits = phone.replace(/\D/g, '');
+      const { data, error } = await withTimeout(supabase.auth.signUp({
+        email: email.trim().toLowerCase(),
+        password: password,
+        options: { data: { full_name: fullName, phone: phoneDigits } }
+      }), 10000);
+      if (error) throw error;
+      if (data.user) {
+        await supabase.from('clients').upsert([{
+          id: data.user.id,
+          email: email.trim().toLowerCase(),
+          full_name: fullName,
+          phone: phoneDigits
+        }]);
+      }
+      return { success: true };
     } catch (error: any) {
-        return { success: false, message: error.message || "שגיאה בהרשמה" };
+      return { success: false, message: error.message || "שגיאה בהרשמה" };
     }
   },
 
   fetchClients: async (): Promise<{ success: boolean, clients: ClientProfile[], error?: string }> => {
-      try {
-          const { data, error } = await withTimeout(supabase.from('clients').select('*').order('created_at', { ascending: false }));
-          if (error) throw error;
-          return { success: true, clients: data as ClientProfile[] };
-      } catch (error: any) {
-          return { success: false, clients: [], error: error.message };
-      }
+    try {
+      const { data, error } = await withTimeout(supabase.from('clients').select('*').order('created_at', { ascending: false }));
+      if (error) throw error;
+      return { success: true, clients: data as ClientProfile[] };
+    } catch (error: any) {
+      return { success: false, clients: [], error: error.message };
+    }
   },
 
   fetchUserProfile: async (userId: string): Promise<Partial<ClientProfile> | null> => {
-      try {
-          const { data, error } = await withTimeout(supabase.from('clients').select('full_name, phone, email').eq('id', userId).single(), 4000);
-          if (error) return null;
-          return data;
-      } catch (e) { return null; }
+    try {
+      const { data, error } = await withTimeout(supabase.from('clients').select('full_name, phone, email').eq('id', userId).single(), 4000);
+      if (error) return null;
+      return data;
+    } catch (e) { return null; }
   },
 
   fetchClientBookings: async (userId: string): Promise<ClientBooking[]> => {
@@ -143,7 +139,7 @@ export const api = {
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
       const payload = {
-        date: getDateKey(new Date(bookingData.date)), 
+        date: getDateKey(new Date(bookingData.date)),
         time: `${bookingData.time}-${addMinutesStr(bookingData.time, bookingData.service.duration)}`,
         service: bookingData.service.name,
         client_name: bookingData.clientName,
@@ -152,8 +148,8 @@ export const api = {
       };
       const { error } = await withTimeout(supabase.from('appointments').insert([payload]));
       if (error) {
-          if (error.message.includes("row-level security")) return { success: true, isDemo: true };
-          return { success: false, message: error.message };
+        if (error.message.includes("row-level security")) return { success: true, isDemo: true };
+        return { success: false, message: error.message };
       }
       return { success: true };
     } catch (error: any) {
@@ -163,12 +159,17 @@ export const api = {
 
   verifyAdminPassword: async (password: string): Promise<{ success: boolean; message?: string }> => {
     try {
-      const { data, error } = await withTimeout(supabase.from('studio_settings').select('admin_password').single());
+      // Fetch the row where key is 'admin_password'
+      const { data, error } = await withTimeout(supabase.from('studio_settings').select('value').eq('key', 'admin_password').single());
+
+      // If error or no data, fall back to default behavior or error
       if (error) throw error;
-      if (data?.admin_password === password) return { success: true };
+
+      const storedPassword = data?.value;
+      if (storedPassword === password) return { success: true };
       return { success: false, message: "סיסמה שגויה" };
     } catch (e: any) {
-      if (password === '1234') return { success: true };
+      if (password === '1234') return { success: true }; // Fallback
       return { success: false, message: e.message };
     }
   },
@@ -185,18 +186,32 @@ export const api = {
 
   fetchSettings: async (): Promise<Record<string, string>> => {
     try {
-      const { data, error } = await withTimeout(supabase.from('studio_settings').select('*').single());
+      const { data, error } = await withTimeout(supabase.from('studio_settings').select('*'));
       if (error) throw error;
-      return data || { admin_password: '1234' };
+
+      // Convert Array<{key, value}> to Record<key, value>
+      const settings: Record<string, string> = {};
+      if (Array.isArray(data)) {
+        data.forEach(row => {
+          if (row.key && row.value) {
+            settings[row.key] = row.value;
+          }
+        });
+      }
+
+      // Ensure defaults if missing
+      if (!settings.admin_password) settings.admin_password = '1234';
+      return settings;
     } catch (e) { return { admin_password: '1234' }; }
   },
 
   updateAdminPassword: async (newPassword: string): Promise<{ success: boolean; message?: string }> => {
     try {
-      const { error } = await withTimeout(supabase.from('studio_settings').upsert({ id: 1, admin_password: newPassword }));
+      // Upsert based on key 'admin_password'
+      const { error } = await withTimeout(supabase.from('studio_settings').upsert({ key: 'admin_password', value: newPassword }, { onConflict: 'key' }));
       if (error) {
-          if (error.message.includes("row-level security")) return { success: false, message: 'RLS_ERROR' };
-          throw error;
+        if (error.message.includes("row-level security")) return { success: false, message: 'RLS_ERROR' };
+        throw error;
       }
       return { success: true };
     } catch (e: any) {

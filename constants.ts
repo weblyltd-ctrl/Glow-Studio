@@ -1,15 +1,14 @@
 
 import { Service } from "./types";
 
-// ב-Vite אנחנו משתמשים ב-define שהגדרנו ב-vite.config.ts
-// או בגישה ישירה למשתני הסביבה שהוזרקו
+// ב-Vite אנחנו משתמשים ב-import.meta.env
 const getEnv = (key: string) => {
-    // @ts-ignore
-    return process.env[key] || "";
+  // @ts-ignore
+  return import.meta.env[key] || "";
 };
 
-export const SUPABASE_URL = getEnv('SUPABASE_URL');
-export const SUPABASE_ANON_KEY = getEnv('SUPABASE_KEY'); 
+export const SUPABASE_URL = getEnv('VITE_SUPABASE_URL');
+export const SUPABASE_ANON_KEY = getEnv('VITE_SUPABASE_ANON_KEY');
 
 export const BUSINESS_INFO = {
   name: "LS Eyebrow Artist",
