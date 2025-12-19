@@ -3,15 +3,29 @@
 <html lang="he" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+    <meta name="theme-color" content="#fcf9f7" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>LS - Eyebrow Artist</title>
+    
+    <!-- Preconnect to critical domains -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://gkdhgxpjkhucdanougua.supabase.co">
+    
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Rubik:ital,wght@0,300..900;1,300..900&display=swap" rel="stylesheet">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
+      :root {
+        --bg-main: #fcf9f7;
+      }
       body {
         font-family: 'Rubik', sans-serif;
+        background-color: var(--bg-main);
+        -webkit-tap-highlight-color: transparent;
+        text-rendering: optimizeLegibility;
       }
       .font-serif-logo {
         font-family: 'Playfair Display', serif;
@@ -20,17 +34,25 @@
         font-family: 'Playfair Display', serif;
         letter-spacing: -2px;
       }
-      /* Custom scrollbar */
-      ::-webkit-scrollbar {
-        width: 6px;
+      /* Performance optimization: hidden till hydrated */
+      [v-cloak] { display: none; }
+      
+      /* Smoother animations */
+      .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+      .animate-slide-up { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+      
+      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+      /* Improved touch targets for mobile */
+      button, a {
+        min-height: 44px;
+        touch-action: manipulation;
       }
-      ::-webkit-scrollbar-track {
-        background: #fcf9f7;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #000000;
-        border-radius: 10px;
-      }
+      
+      ::-webkit-scrollbar { width: 4px; }
+      ::-webkit-scrollbar-track { background: var(--bg-main); }
+      ::-webkit-scrollbar-thumb { background: #000; border-radius: 10px; }
     </style>
   <script type="importmap">
 {
@@ -47,7 +69,7 @@
 }
 </script>
 </head>
-  <body class="bg-[#fcf9f7] text-slate-900">
+  <body>
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>
