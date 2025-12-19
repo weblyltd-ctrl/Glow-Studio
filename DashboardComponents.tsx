@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, List, Users, Calendar, Clock, Trash2, Loader
 import { api } from "./api";
 import { ClientBooking, ClientProfile } from "./types";
 
-export function HeroSection({ userEmail, userName, onStartBooking, onManageBookings, onAdminAccess }: { userEmail?: string, userName?: string, onStartBooking: () => void, onManageBookings: () => void, onAdminAccess: () => void }) {
+export function HeroSection({ userEmail, userName, onStartBooking, onManageBookings }: { userEmail?: string, userName?: string, onStartBooking: () => void, onManageBookings: () => void }) {
   const displayName = userName && userName.trim() !== "" ? ` ${userName}` : "";
 
   return (
@@ -21,10 +21,6 @@ export function HeroSection({ userEmail, userName, onStartBooking, onManageBooki
             <button onClick={onManageBookings} className="group bg-white text-slate-900 border border-slate-200 px-8 py-5 rounded-2xl text-lg font-bold hover:bg-slate-50 transition-all flex items-center justify-between">
                 <span>התורים שלי</span>
                 <div className="bg-slate-100 p-2 rounded-full"><List size={20} /></div>
-            </button>
-            <button onClick={onAdminAccess} className="group bg-transparent text-slate-400 border border-transparent px-8 py-3 rounded-2xl text-[10px] font-bold uppercase tracking-widest hover:text-black transition-all flex items-center justify-center gap-2 mt-8">
-                <Settings size={14} />
-                <span>Admin Settings</span>
             </button>
         </div>
     </div>
@@ -113,7 +109,9 @@ export function ManageList({ userId, onBack }: { userId: string, onBack: () => v
     useEffect(() => { load(); }, [userId]);
 
     const handleCancel = async (bookingId: string | number) => { 
-        if (deletingId) return; // Prevent multiple clicks
+        if (deletingId) return; 
+        if (!confirm("האם את בטוחה שברצונך לבטל את התור?")) return;
+        
         const idStr = String(bookingId);
         setDeletingId(idStr);
         
@@ -211,6 +209,8 @@ export function ClientRegistry({ onBack }: { onBack: () => void }) {
 
     const handleAdminDeleteBooking = async (bookingId: string | number) => {
         if (deletingBookingId) return;
+        if (!confirm("האם את בטוחה שברצונך למחוק תור זה לצמיתות?")) return;
+        
         const idStr = String(bookingId);
         setDeletingBookingId(idStr);
         

@@ -232,7 +232,6 @@ function App() {
                 userName={state.clientName} 
                 onStartBooking={() => nextStep("services")} 
                 onManageBookings={() => nextStep("manage-list")} 
-                onAdminAccess={() => nextStep("admin-auth")}
             />
         )}
         {state.step === "admin-auth" && (

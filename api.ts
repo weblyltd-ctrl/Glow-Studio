@@ -4,10 +4,17 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, SERVICES } from "./constants";
 import { ClientBooking, ClientProfile } from "./types";
 import { getDateKey, addMinutesStr } from "./utils";
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// בדיקה אם המפתחות הוגדרו כראוי ב-Environment Variables
+const isConfigValid = SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_ANON_KEY.length > 10;
+
+export const supabase = createClient(
+  SUPABASE_URL || "https://placeholder.supabase.co", 
+  SUPABASE_ANON_KEY || "missing-key"
+);
 
 export const api = {
   fetchBookedSlots: async (): Promise<{ connected: boolean; slots: Record<string, string[]>; error?: string }> => {
+    if (!isConfigValid) return { connected: false, slots: {}, error: "שגיאת קונפיגורציה: חסר SUPABASE_KEY ב-Vercel" };
     try {
       const { data, error } = await supabase
         .from('appointments')
@@ -41,6 +48,7 @@ export const api = {
   },
 
   loginUser: async (identity: string, password: string): Promise<{success: boolean, message?: string, code?: string}> => {
+    if (!isConfigValid) return { success: false, message: "הגדרות המערכת ב-Vercel לא הושלמו (חסר SUPABASE_KEY)" };
     try {
         let authParams: any = { password };
         
@@ -64,11 +72,15 @@ export const api = {
 
         return { success: true };
     } catch (error: any) {
-        return { success: false, message: error.message || "פרטי התחברות שגויים", code: 'ERROR' };
+        let msg = error.message;
+        if (msg === "Invalid login credentials") msg = "אימייל או סיסמה לא נכונים";
+        if (msg.includes("API key")) msg = "שגיאת אבטחה: המפתח ב-Vercel לא תקין. יש להזין את ה-Anon Key מ-Supabase";
+        return { success: false, message: msg, code: 'ERROR' };
     }
   },
 
   registerUser: async (email: string, password: string, fullName: string, phone: string): Promise<{success: boolean, message?: string}> => {
+    if (!isConfigValid) return { success: false, message: "הגדרות המערכת לא הושלמו" };
     try {
         const phoneDigits = phone.replace(/\D/g, '');
         
@@ -145,8 +157,12 @@ export const api = {
 
   saveBooking: async (bookingData: any): Promise<{ success: boolean; message?: string; isDemo?: boolean }> => {
     try {
-      const { data: { user } } = await (supabase.auth as any).getUser();
-      if (!user) return { success: false, message: "יש להתחבר." };
+      const { data: { session } } = await (supabase.auth as any).getSession();
+      const userId = session?.user?.id;
+      
+      if (!userId && !bookingData.isDemoMode) {
+          return { success: false, message: "יש להתחבר כדי לקבוע תור." };
+      }
 
       const payload = {
         date: getDateKey(new Date(bookingData.date)), 
@@ -154,7 +170,7 @@ export const api = {
         service: bookingData.service.name,
         client_name: bookingData.clientName,
         client_phone: bookingData.clientPhone,
-        user_id: user.id 
+        user_id: userId || null
       };
 
       const { error } = await supabase.from('appointments').insert([payload]);
@@ -170,18 +186,15 @@ export const api = {
 
   cancelBooking: async (bookingId: number | string): Promise<{ success: boolean; error?: any }> => {
     try {
-      const { data: { user } } = await (supabase.auth as any).getUser();
-      if (!user) throw new Error("יש להתחבר.");
-      
-      // Removed Number() conversion and user_id check to support UUIDs and Admin deletion.
-      // RLS on Supabase will still protect regular users if configured.
       const { error } = await supabase.from('appointments').delete().eq('id', bookingId); 
-      
       if (error) throw error;
       return { success: true };
     } catch (error: any) {
       console.error("Cancel booking error:", error);
-      return { success: false, error: error.message };
+      const errorMessage = error.message?.includes("row-level security") 
+        ? "אין הרשאה לביטול תור זה" 
+        : error.message;
+      return { success: false, error: errorMessage };
     }
   },
 

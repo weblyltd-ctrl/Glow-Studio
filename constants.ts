@@ -1,8 +1,9 @@
 
 import { Service } from "./types";
 
+// המשתנים יימשכו מ-Vercel. אם את מריצה מקומית, ודאי שיש לך קובץ .env
 export const SUPABASE_URL = process.env.SUPABASE_URL || "https://gkdhgxpjkhucdanougua.supabase.co";
-export const SUPABASE_ANON_KEY = process.env.SUPABASE_KEY || "sb_publishable_aPKU7C8-IsokIsuH0szcUQ_ZM6i5vuR";
+export const SUPABASE_ANON_KEY = process.env.SUPABASE_KEY || ""; 
 
 export const BUSINESS_INFO = {
   name: "LS Eyebrow Artist",

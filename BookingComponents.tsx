@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from "react";
-import { ChevronRight, ChevronLeft, CalendarDays, Loader2, Clock, CheckCircle, AlertTriangle, Copy, Check, MapPin } from "lucide-react";
+import { ChevronRight, ChevronLeft, CalendarDays, Loader2, Clock, CheckCircle, AlertTriangle, Copy, Check, MapPin, ChevronDown, ChevronUp } from "lucide-react";
 import { Service, AppointmentState } from "./types";
 import { isWorkingDay, getDateKey, generateTimeSlots } from "./utils";
 import { api } from "./api";
@@ -29,10 +29,76 @@ export function ServiceSelection({ services, onSelect, onBack }: { services: Ser
     );
 }
 
+function Calendar({ selectedDate, onDateSelect }: { selectedDate: Date | null, onDateSelect: (d: Date) => void }) {
+    const [viewDate, setViewDate] = useState(new Date(selectedDate || new Date()));
+    
+    const year = viewDate.getFullYear();
+    const month = viewDate.getMonth();
+    
+    const firstDayOfMonth = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    
+    const days = Array.from({ length: daysInMonth }, (_, i) => new Date(year, month, i + 1));
+    const blanks = Array.from({ length: firstDayOfMonth }, (_, i) => i);
+
+    const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
+    const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
+
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    const weekDays = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
+
+    return (
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 animate-fade-in">
+            <div className="flex items-center justify-between mb-4 px-2">
+                <button onClick={prevMonth} className="p-2 hover:bg-slate-50 rounded-full transition"><ChevronRight size={18} /></button>
+                <h3 className="font-bold text-slate-900 font-serif-logo text-lg">
+                    {viewDate.toLocaleString('he-IL', { month: 'long', year: 'numeric' })}
+                </h3>
+                <button onClick={nextMonth} className="p-2 hover:bg-slate-50 rounded-full transition"><ChevronLeft size={18} /></button>
+            </div>
+            
+            <div className="grid grid-cols-7 gap-1 mb-2">
+                {weekDays.map(d => (
+                    <div key={d} className="text-center text-[10px] font-bold text-slate-300 uppercase py-2">{d}</div>
+                ))}
+            </div>
+            
+            <div className="grid grid-cols-7 gap-1">
+                {blanks.map(i => <div key={`blank-${i}`} />)}
+                {days.map(date => {
+                    const isSelected = selectedDate && getDateKey(selectedDate) === getDateKey(date);
+                    const isPast = date < today;
+                    const isWorkDay = isWorkingDay(date);
+                    const isDisabled = isPast || !isWorkDay;
+                    
+                    return (
+                        <button
+                            key={date.toISOString()}
+                            disabled={isDisabled}
+                            onClick={() => onDateSelect(date)}
+                            className={`
+                                aspect-square rounded-xl flex items-center justify-center text-sm font-medium transition-all relative
+                                ${isSelected ? 'bg-black text-white shadow-md scale-105 z-10' : ''}
+                                ${!isSelected && !isDisabled ? 'hover:bg-slate-50 text-slate-700' : ''}
+                                ${isDisabled ? 'text-slate-200 cursor-not-allowed' : ''}
+                                ${!isSelected && !isDisabled && getDateKey(date) === getDateKey(today) ? 'text-blue-600 font-bold' : ''}
+                            `}
+                        >
+                            {date.getDate()}
+                            {isSelected && <div className="absolute -bottom-1 w-1 h-1 bg-white rounded-full"></div>}
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
 export function DateSelection({ service, selectedDate, selectedTime, onDateSelect, onTimeSelect, onNext, onBack, isValid, isLoading, error }: any) {
     const [slots, setSlots] = useState<{ time: string; available: boolean; waitingCount: number }[]>([]);
     const [loadingSlots, setLoadingSlots] = useState(false);
-    const dates = Array.from({ length: 14 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i); return d; }).filter(d => isWorkingDay(d));
     
     useEffect(() => {
         if (selectedDate && service) {
@@ -48,39 +114,75 @@ export function DateSelection({ service, selectedDate, selectedTime, onDateSelec
         <div className="space-y-6 animate-slide-up h-full flex flex-col">
              <div className="flex items-center gap-2">
                 <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition"><ChevronRight size={24} /></button>
-                <div><h2 className="text-2xl font-bold">מתי נוח לך?</h2><p className="text-slate-500 text-sm">עבור {service?.name}</p></div>
+                <div>
+                    <h2 className="text-2xl font-bold">מתי נוח לך?</h2>
+                    <p className="text-slate-500 text-sm">בחרי יום ושעה עבור {service?.name}</p>
+                </div>
             </div>
-            <div className="flex gap-3 overflow-x-auto pb-4 pt-2 px-1 snap-x no-scrollbar">
-                {dates.map((date, i) => {
-                    const isSelected = selectedDate && getDateKey(selectedDate) === getDateKey(date);
-                    return (
-                        <button key={i} onClick={() => onDateSelect(date)} className={`flex-shrink-0 w-16 h-20 rounded-2xl flex flex-col items-center justify-center gap-1 border transition-all snap-start ${isSelected ? 'bg-black text-white border-black shadow-lg scale-105' : 'bg-white text-slate-600 border-slate-100 hover:border-slate-300'}`}>
-                            <span className="text-xs opacity-80">{date.toLocaleDateString('he-IL', { weekday: 'short' })}</span>
-                            <span className="text-xl font-bold">{date.getDate()}</span>
-                        </button>
-                    )
-                })}
-            </div>
-            <div className="flex-1 overflow-y-auto min-h-[300px]">
-                {!selectedDate ? <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2"><CalendarDays size={32} /><p>יש לבחור תאריך</p></div> : loadingSlots ? <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2"><Loader2 className="animate-spin" size={32} /><p>טוען שעות...</p></div> : <div className="grid grid-cols-3 gap-3 content-start">
-                        {slots.map((slot, i) => (
-                            <button key={i} onClick={() => onTimeSelect(slot.time, !slot.available)} className={`relative py-3 rounded-xl text-sm font-bold border transition-all ${selectedTime === slot.time ? (slot.available ? 'bg-black text-white border-black shadow-md' : 'bg-yellow-100 text-yellow-900 border-yellow-300 shadow-md') : (slot.available ? 'bg-white text-slate-900 border-slate-200 hover:border-slate-900' : 'bg-slate-50 text-slate-400 border-slate-100')}`}>
-                                {slot.time}
-                                {!slot.available && <span className="absolute -top-2 -left-2 bg-yellow-400 text-yellow-900 text-[10px] px-1.5 py-0.5 rounded-full font-bold shadow-sm">המתנה</span>}
-                            </button>
-                        ))}
-                    </div>}
+
+            <Calendar selectedDate={selectedDate} onDateSelect={onDateSelect} />
+
+            <div className="flex-1 overflow-y-auto min-h-[250px] pt-4">
+                {!selectedDate ? (
+                    <div className="flex flex-col items-center justify-center h-full text-slate-300 gap-3 py-10">
+                        <CalendarDays size={40} className="opacity-20" />
+                        <p className="text-xs font-bold uppercase tracking-widest">יש לבחור תאריך בלוח השנה</p>
+                    </div>
+                ) : loadingSlots ? (
+                    <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2 py-10">
+                        <Loader2 className="animate-spin" size={32} />
+                        <p className="text-xs font-bold uppercase tracking-widest">בודקת זמינות...</p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-3 gap-3 content-start animate-fade-in pb-10">
+                        {slots.map((slot, i) => {
+                            const isSelected = selectedTime === slot.time;
+                            const isAvailable = slot.available;
+                            
+                            return (
+                                <button 
+                                    key={i} 
+                                    onClick={() => onTimeSelect(slot.time, !isAvailable)} 
+                                    className={`
+                                        relative py-4 rounded-2xl border transition-all flex flex-col items-center justify-center gap-0.5
+                                        ${isSelected 
+                                            ? (isAvailable ? 'bg-black text-white border-black shadow-lg scale-105 z-10' : 'bg-amber-400 text-black border-amber-500 shadow-md scale-105 z-10 font-bold') 
+                                            : (isAvailable ? 'bg-white text-slate-900 border-slate-100 hover:border-slate-300 shadow-sm' : 'bg-[#fffbeb] text-amber-900 border-amber-100 font-medium')
+                                        }
+                                    `}
+                                >
+                                    <span className={`transition-all ${!isAvailable ? 'text-[12px]' : 'text-sm font-bold'}`}>
+                                        {slot.time}
+                                    </span>
+                                    {!isAvailable && (
+                                        <span className={`
+                                            text-[8px] font-bold uppercase tracking-tight
+                                            ${isSelected ? 'text-amber-900' : 'text-amber-600 opacity-70'}
+                                        `}>
+                                            המתנה
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
             
-            {error && <div className="text-red-500 text-sm bg-red-50 p-3 rounded-lg border border-red-100 mb-2">{error}</div>}
+            {error && (
+                <div className="text-red-500 text-[11px] font-bold bg-red-50 p-4 rounded-2xl border border-red-100 mb-4 animate-shake flex items-center gap-2">
+                    <AlertTriangle size={14} />
+                    <span>{error}</span>
+                </div>
+            )}
 
-            <div className="sticky bottom-0 bg-[#fcf9f7]/90 backdrop-blur-sm pt-4 border-t border-slate-200/50">
+            <div className="sticky bottom-0 bg-[#fcf9f7]/90 backdrop-blur-md pt-4 pb-4 border-t border-slate-100">
                 <button 
                     disabled={!isValid || isLoading} 
                     onClick={onNext} 
-                    className="w-full bg-black text-white py-4 rounded-full font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
+                    className="w-full bg-black text-white py-4 rounded-full font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:bg-slate-800 transition-all flex items-center justify-center gap-2 transform active:scale-95"
                 >
-                    {isLoading ? <Loader2 className="animate-spin" /> : 'אישור תור'}
+                    {isLoading ? <Loader2 className="animate-spin" size={20} /> : 'אישור תור'}
                 </button>
             </div>
         </div>
